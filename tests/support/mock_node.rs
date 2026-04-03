@@ -121,7 +121,7 @@ impl MockNode {
         let result = tokio::time::timeout(timeout, async {
             while let Some(Ok(msg)) = self.read.next().await {
                 if let Message::Text(text) = msg {
-                    if let Ok(invoke) = serde_json::from_str::<InvokeMsg>(&text.to_string()) {
+                    if let Ok(invoke) = serde_json::from_str::<InvokeMsg>(text.as_ref()) {
                         return Some(invoke);
                     }
                 }
