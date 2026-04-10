@@ -6,7 +6,7 @@ use crate::agent::memory_loader::{DefaultMemoryLoader, MemoryLoader};
 use crate::agent::prompt::{PromptContext, SystemPromptBuilder};
 use crate::i18n::ToolDescriptions;
 use crate::observability::{self, Observer, ObserverEvent};
-use crate::runtime;
+use crate::platform;
 use crate::security::SecurityPolicy;
 use crate::tools::{self, Tool, ToolSpec};
 use anyhow::Result;
@@ -374,8 +374,8 @@ impl Agent {
     pub async fn from_config(config: &Config) -> Result<Self> {
         let observer: Arc<dyn Observer> =
             Arc::from(observability::create_observer(&config.observability));
-        let runtime: Arc<dyn runtime::RuntimeAdapter> =
-            Arc::from(runtime::create_runtime(&config.runtime)?);
+        let runtime: Arc<dyn platform::RuntimeAdapter> =
+            Arc::from(platform::create_runtime(&config.runtime)?);
         let security = Arc::new(SecurityPolicy::from_config(
             &config.autonomy,
             &config.workspace_dir,

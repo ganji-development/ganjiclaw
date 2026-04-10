@@ -1,4 +1,4 @@
-pub use zeroclaw_config::runtime::*;
+pub use zeroclaw_config::platform::*;
 
 #[cfg(test)]
 mod tests {

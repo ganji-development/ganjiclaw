@@ -23,7 +23,7 @@ pub mod tls;
 pub mod ws;
 
 use crate::cost::CostTracker;
-use crate::runtime;
+use crate::platform;
 use crate::security::pairing::{PairingGuard, constant_time_eq, is_public_bind};
 use crate::tools;
 use crate::tools::CanvasStore;
@@ -430,8 +430,8 @@ pub async fn run_gateway(
         &config.workspace_dir,
         config.api_key.as_deref(),
     )?);
-    let runtime: Arc<dyn runtime::RuntimeAdapter> =
-        Arc::from(runtime::create_runtime(&config.runtime)?);
+    let runtime: Arc<dyn platform::RuntimeAdapter> =
+        Arc::from(platform::create_runtime(&config.runtime)?);
     let security = Arc::new(SecurityPolicy::from_config(
         &config.autonomy,
         &config.workspace_dir,

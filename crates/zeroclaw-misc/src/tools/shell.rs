@@ -1,4 +1,4 @@
-use crate::runtime::RuntimeAdapter;
+use crate::platform::RuntimeAdapter;
 use crate::security::SecurityPolicy;
 use crate::security::traits::Sandbox;
 use async_trait::async_trait;
@@ -243,7 +243,7 @@ impl Tool for ShellTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime::{NativeRuntime, RuntimeAdapter};
+    use crate::platform::{NativeRuntime, RuntimeAdapter};
     use crate::security::{AutonomyLevel, SecurityPolicy};
     use zeroclaw_tools::wrappers::{PathGuardedTool, RateLimitedTool};
 

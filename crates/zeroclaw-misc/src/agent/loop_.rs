@@ -2,7 +2,7 @@ use crate::approval::{ApprovalManager, ApprovalRequest, ApprovalResponse};
 use crate::cost::types::BudgetCheck;
 use crate::i18n::ToolDescriptions;
 use crate::observability::{self, Observer, ObserverEvent, runtime_trace};
-use crate::runtime;
+use crate::platform;
 use crate::security::{AutonomyLevel, SecurityPolicy};
 use crate::tools::{self, Tool};
 use crate::util::truncate_with_ellipsis;
@@ -1968,8 +1968,8 @@ pub async fn run(
     // ── Wire up agnostic subsystems ──────────────────────────────
     let base_observer = observability::create_observer(&config.observability);
     let observer: Arc<dyn Observer> = Arc::from(base_observer);
-    let runtime: Arc<dyn runtime::RuntimeAdapter> =
-        Arc::from(runtime::create_runtime(&config.runtime)?);
+    let runtime: Arc<dyn platform::RuntimeAdapter> =
+        Arc::from(platform::create_runtime(&config.runtime)?);
     let security = Arc::new(SecurityPolicy::from_config(
         &config.autonomy,
         &config.workspace_dir,
@@ -2964,8 +2964,8 @@ pub async fn process_message(
 ) -> Result<String> {
     let observer: Arc<dyn Observer> =
         Arc::from(observability::create_observer(&config.observability));
-    let runtime: Arc<dyn runtime::RuntimeAdapter> =
-        Arc::from(runtime::create_runtime(&config.runtime)?);
+    let runtime: Arc<dyn platform::RuntimeAdapter> =
+        Arc::from(platform::create_runtime(&config.runtime)?);
     let security = Arc::new(SecurityPolicy::from_config(
         &config.autonomy,
         &config.workspace_dir,
@@ -5137,8 +5137,8 @@ mod tests {
             workspace_dir: tmp.path().to_path_buf(),
             ..crate::security::SecurityPolicy::default()
         });
-        let runtime: Arc<dyn crate::runtime::RuntimeAdapter> =
-            Arc::new(crate::runtime::NativeRuntime::new());
+        let runtime: Arc<dyn crate::platform::RuntimeAdapter> =
+            Arc::new(crate::platform::NativeRuntime::new());
         let tools_registry: Vec<Box<dyn Tool>> = vec![Box::new(
             crate::tools::shell::ShellTool::new(security, runtime),
         )];

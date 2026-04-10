@@ -28,7 +28,7 @@ pub mod peripherals;
 pub mod plugins;
 pub mod rag;
 pub mod routines;
-pub mod runtime;
+pub mod platform;
 pub mod security;
 pub mod service;
 pub mod skillforge;

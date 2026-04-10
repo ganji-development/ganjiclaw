@@ -7,7 +7,7 @@ pub mod helpers;
 pub mod pairing;
 pub mod policy;
 pub mod provider_aliases;
-pub mod runtime;
+pub mod platform;
 pub mod scattered_types;
 pub mod schema;
 pub mod secrets;

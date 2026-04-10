@@ -79,7 +79,7 @@ use crate::approval::ApprovalManager;
 use crate::identity;
 use crate::observability::traits::{ObserverEvent, ObserverMetric};
 use crate::observability::{self, Observer, runtime_trace};
-use crate::runtime;
+use crate::platform;
 use crate::security::{AutonomyLevel, SecurityPolicy};
 use crate::tools::{self, Tool};
 use crate::util::truncate_with_ellipsis;
@@ -5343,8 +5343,8 @@ pub async fn start_channels(config: Config) -> Result<()> {
 
     let observer: Arc<dyn Observer> =
         Arc::from(observability::create_observer(&config.observability));
-    let runtime: Arc<dyn runtime::RuntimeAdapter> =
-        Arc::from(runtime::create_runtime(&config.runtime)?);
+    let runtime: Arc<dyn platform::RuntimeAdapter> =
+        Arc::from(platform::create_runtime(&config.runtime)?);
     let security = Arc::new(SecurityPolicy::from_config(
         &config.autonomy,
         &config.workspace_dir,

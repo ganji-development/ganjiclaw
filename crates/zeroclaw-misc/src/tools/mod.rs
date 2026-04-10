@@ -139,7 +139,7 @@ pub use sop_list::SopListTool;
 pub use sop_status::SopStatusTool;
 pub use verifiable_intent::VerifiableIntentTool;
 
-use crate::runtime::{NativeRuntime, RuntimeAdapter};
+use crate::platform::{NativeRuntime, RuntimeAdapter};
 use crate::security::{SecurityPolicy, create_sandbox};
 use async_trait::async_trait;
 use parking_lot::RwLock;

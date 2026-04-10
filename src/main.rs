@@ -128,7 +128,7 @@ mod peripherals;
 mod plugins;
 mod providers;
 #[cfg(feature = "agent-runtime")]
-mod runtime;
+mod platform;
 #[cfg(feature = "agent-runtime")]
 mod security;
 #[cfg(feature = "agent-runtime")]
