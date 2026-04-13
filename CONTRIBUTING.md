@@ -409,19 +409,19 @@ when loading older config files. This is the common case.
 
 ### How the migration system works
 
-1. `src/config/migration.rs` contains `V1Compat`, a wrapper struct that uses
-   `#[serde(flatten)]` to deserialize both old-format and current-format TOML into
-   a single pass. Old fields live on `V1Compat`; current fields land on `Config`.
+1. `crates/zeroclaw-config/src/migration.rs` contains `V1Compat`, a wrapper struct
+   that uses `#[serde(flatten)]` to deserialize both old-format and current-format
+   TOML into a single pass. Old fields live on `V1Compat`; current fields land on
+   `Config`.
 2. `V1Compat::into_config()` moves old field values into their new locations on
-   `Config` using typed field access — no string-based key manipulation.
-3. After migration, `Config::resolve_provider_cache()` populates the resolved cache
-   fields so existing read-site call sites continue to work unchanged.
-4. For schema versions beyond V2, add `fn vN_to_vM(&mut Config)` functions that
+   `Config` using typed field access — no string-based key manipulation. All call
+   sites use `config.providers.*` directly.
+3. For schema versions beyond V2, add `fn vN_to_vM(&mut Config)` functions that
    mutate the `Config` struct directly.
 
 ### How to add a new migration step
 
-1. Bump `CURRENT_SCHEMA_VERSION` in `src/config/migration.rs`.
+1. Bump `CURRENT_SCHEMA_VERSION` in `crates/zeroclaw-config/src/migration.rs`.
 2. If the old field was on `V1Compat`, update the `migrate_providers()` or similar
    method. If the change is between V2+ layouts, add a new `fn vN_to_vM(&mut Config)`
    and call it from `into_config()` after the schema version check.
@@ -431,9 +431,9 @@ when loading older config files. This is the common case.
    - Assert the old locations are empty/cleared
 4. Run `cargo test --test component -- config_migration` to verify.
 
-### `zeroclaw props migrate`
+### `zeroclaw config migrate`
 
-Users can run `zeroclaw props migrate` to rewrite their on-disk `config.toml` to the
+Users can run `zeroclaw config migrate` to rewrite their on-disk `config.toml` to the
 current schema version. This command uses `toml_edit` to preserve comments and
 formatting while making structural changes.
 
