@@ -49,7 +49,7 @@ export function useConfigState() {
   // Initial fetch
   useEffect(() => {
     getConfig()
-      .then((data) => {
+      .then((data: string | Record<string, unknown>) => {
         const toml = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
         setRawToml(toml);
         try {
@@ -59,7 +59,7 @@ export function useConfigState() {
           setMode('advanced');
         }
       })
-      .catch((err) => setError(err.message))
+      .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
 

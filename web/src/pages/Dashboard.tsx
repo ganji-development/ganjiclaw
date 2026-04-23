@@ -13,7 +13,7 @@ import {
   ChevronRight,
   Wifi,
 } from 'lucide-react';
-import type { StatusResponse, CostSummary, Session, ChannelDetail } from '@/types/api';
+import type { StatusResponse, CostSummary, Session, ChannelDetail, ComponentHealth } from '@/types/api';
 import { getStatus, getCost, getSessions, getChannels } from '@/lib/api';
 import { useSSE } from '@/hooks/useSSE';
 import { t } from '@/lib/i18n';
@@ -360,7 +360,7 @@ function OverviewTab({
                 {t("dashboard.no_components")}
               </p>
             ) : (
-              Object.entries(status.health.components).map(([name, comp]) => (
+              Object.entries(status.health.components).map(([name, comp]: [string, ComponentHealth]) => (
                 <div
                   key={name}
                   className="rounded-2xl p-3 transition-all"
@@ -428,11 +428,11 @@ function SessionsTab() {
 
   const loadSessions = useCallback(() => {
     getSessions()
-      .then((data) => {
+      .then((data: Session[]) => {
         setSessions(data);
         setLoading(false);
       })
-      .catch((err) => {
+      .catch((err: Error) => {
         setError(err.message);
         setLoading(false);
       });
@@ -611,11 +611,11 @@ function ChannelsTab() {
 
   const loadChannels = useCallback(() => {
     getChannels()
-      .then((data) => {
+      .then((data: ChannelDetail[]) => {
         setChannels(data);
         setLoading(false);
       })
-      .catch((err) => {
+      .catch((err: Error) => {
         setError(err.message);
         setLoading(false);
       });
@@ -792,11 +792,11 @@ export default function Dashboard() {
 
   useEffect(() => {
     Promise.all([getStatus(), getCost()])
-      .then(([s, c]) => {
+      .then(([s, c]: [StatusResponse, CostSummary]) => {
         setStatus(s);
         setCost(c);
       })
-      .catch((err) => setError(err.message));
+      .catch((err: Error) => setError(err.message));
   }, []);
 
   if (error) {

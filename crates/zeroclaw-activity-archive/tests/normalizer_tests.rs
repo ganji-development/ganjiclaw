@@ -1,0 +1,382 @@
+//! Tests for the normalizer.
+
+use crate::normalizer::Normalizer;
+use crate::schema::*;
+use parking_lot::Mutex;
+use rusqlite::Connection;
+use tempfile::NamedTempFile;
+use std::sync::Arc;
+
+#[test]
+fn test_normalizer_creation() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let normalizer = Normalizer::new(Arc::new(Mutex::new(conn)));
+
+    assert!(normalizer.load_privacy_rules().is_ok());
+}
+
+#[test]
+fn test_normalizer_process_raw_event() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let normalizer = Normalizer::new(Arc::new(Mutex::new(conn)));
+
+    let payload = serde_json::json!({
+        "window_title": "Test Window",
+        "process_name": "TestApp",
+    });
+
+    let raw_event = RawEvent::new("window_focus".to_string(), payload);
+
+    let result = normalizer.process_raw_event(&raw_event);
+
+    assert!(result.is_ok());
+    let event = result.unwrap();
+    assert!(event.is_some());
+
+    let event = event.unwrap();
+    assert_eq!(event.source, "window_focus");
+    assert_eq!(event.event_type, EventType::WindowFocus);
+    assert_eq!(event.app, Some("TestApp".to_string()));
+    assert_eq!(event.title, Some("Test Window".to_string()));
+}
+
+#[test]
+fn test_normalizer_excludes_sensitive_paths() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let normalizer = Normalizer::new(Arc::new(Mutex::new(conn)));
+
+    // Add privacy rule to exclude password paths
+    let rule = PrivacyRule::new(
+        PrivacyRuleType::ExcludePath,
+        "**/passwords/**".to_string(),
+        PrivacyAction::Exclude,
+    );
+
+    let conn = normalizer.db.lock();
+    conn.execute(
+        "INSERT INTO privacy_rules (id, rule_type, pattern, action, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![
+            rule.id,
+            rule.rule_type.as_str(),
+            rule.pattern,
+            rule.action.as_str(),
+            rule.created_at.to_rfc3339(),
+        ],
+    ).unwrap();
+    drop(conn);
+
+    normalizer.load_privacy_rules().unwrap();
+
+    // Create event with sensitive path
+    let mut event = Event::new("file_activity".to_string(), EventType::FileCreate);
+    event.path = Some("/home/user/passwords/secret.txt".to_string());
+
+    // Should be excluded
+    assert!(normalizer.should_exclude(&event));
+}
+
+#[test]
+fn test_normalizer_excludes_sensitive_titles() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let normalizer = Normalizer::new(Arc::new(Mutex::new(conn)));
+
+    // Add privacy rule to exclude password titles
+    let rule = PrivacyRule::new(
+        PrivacyRuleType::ExcludeTitle,
+        "*password*".to_string(),
+        PrivacyAction::Exclude,
+    );
+
+    let conn = normalizer.db.lock();
+    conn.execute(
+        "INSERT INTO privacy_rules (id, rule_type, pattern, action, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![
+            rule.id,
+            rule.rule_type.as_str(),
+            rule.pattern,
+            rule.action.as_str(),
+            rule.created_at.to_rfc3339(),
+        ],
+    ).unwrap();
+    drop(conn);
+
+    normalizer.load_privacy_rules().unwrap();
+
+    // Create event with sensitive title
+    let mut event = Event::new("window_focus".to_string(), EventType::WindowFocus);
+    event.title = Some("Enter Password".to_string());
+
+    // Should be excluded
+    assert!(normalizer.should_exclude(&event));
+}
+
+#[test]
+fn test_normalizer_excludes_sensitive_domains() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let normalizer = Normalizer::new(Arc::new(Mutex::new(conn)));
+
+    // Add privacy rule to exclude banking domains
+    let rule = PrivacyRule::new(
+        PrivacyRuleType::ExcludeDomain,
+        "*.bank.com".to_string(),
+        PrivacyAction::Exclude,
+    );
+
+    let conn = normalizer.db.lock();
+    conn.execute(
+        "INSERT INTO privacy_rules (id, rule_type, pattern, action, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![
+            rule.id,
+            rule.rule_type.as_str(),
+            rule.pattern,
+            rule.action.as_str(),
+            rule.created_at.to_rfc3339(),
+        ],
+    ).unwrap();
+    drop(conn);
+
+    normalizer.load_privacy_rules().unwrap();
+
+    // Create event with sensitive domain
+    let mut event = Event::new("browser_visit".to_string(), EventType::BrowserVisit);
+    event.details = serde_json::json!({
+        "url": "https://www.mybank.com/login"
+    });
+
+    // Should be excluded
+    assert!(normalizer.should_exclude(&event));
+}
+
+#[test]
+fn test_normalizer_does_not_exclude_safe_events() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let normalizer = Normalizer::new(Arc::new(Mutex::new(conn)));
+
+    // Create safe event
+    let mut event = Event::new("window_focus".to_string(), EventType::WindowFocus);
+    event.title = Some("Safe Document".to_string());
+    event.path = Some("/home/user/documents/work.txt".to_string());
+
+    // Should not be excluded
+    assert!(!normalizer.should_exclude(&event));
+}
+
+#[test]
+fn test_normalizer_redacts_sensitive_fields() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let normalizer = Normalizer::new(Arc::new(Mutex::new(conn)));
+
+    // Add redaction rule
+    let rule = PrivacyRule::new(
+        PrivacyRuleType::Redaction,
+        "*secret*".to_string(),
+        PrivacyAction::Redact,
+    );
+
+    let conn = normalizer.db.lock();
+    conn.execute(
+        "INSERT INTO privacy_rules (id, rule_type, pattern, action, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![
+            rule.id,
+            rule.rule_type.as_str(),
+            rule.pattern,
+            rule.action.as_str(),
+            rule.created_at.to_rfc3339(),
+        ],
+    ).unwrap();
+    drop(conn);
+
+    normalizer.load_privacy_rules().unwrap();
+
+    // Create event with sensitive title
+    let mut event = Event::new("window_focus".to_string(), EventType::WindowFocus);
+    event.title = Some("My Secret Document".to_string());
+
+    // Apply redaction
+    normalizer.redact(&mut event);
+
+    // Title should be redacted
+    assert_eq!(event.title, Some("[REDACTED]".to_string()));
+}
+
+#[test]
+fn test_normalizer_hashes_sensitive_fields() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let normalizer = Normalizer::new(Arc::new(Mutex::new(conn)));
+
+    // Add hashing rule
+    let rule = PrivacyRule::new(
+        PrivacyRuleType::Redaction,
+        "*token*".to_string(),
+        PrivacyAction::Hash,
+    );
+
+    let conn = normalizer.db.lock();
+    conn.execute(
+        "INSERT INTO privacy_rules (id, rule_type, pattern, action, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![
+            rule.id,
+            rule.rule_type.as_str(),
+            rule.pattern,
+            rule.action.as_str(),
+            rule.created_at.to_rfc3339(),
+        ],
+    ).unwrap();
+    drop(conn);
+
+    normalizer.load_privacy_rules().unwrap();
+
+    // Create event with sensitive title
+    let mut event = Event::new("window_focus".to_string(), EventType::WindowFocus);
+    let original_title = "My Token Value".to_string();
+    event.title = Some(original_title.clone());
+
+    // Apply hashing
+    normalizer.redact(&mut event);
+
+    // Title should be hashed (not equal to original)
+    assert_ne!(event.title, Some(original_title));
+    // Hashed value should be hex string
+    let hashed = event.title.unwrap();
+    assert!(hashed.chars().all(|c| c.is_ascii_hexdigit()));
+}
+
+#[test]
+fn test_normalizer_extract_entities() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let normalizer = Normalizer::new(Arc::new(Mutex::new(conn)));
+
+    // Create event with app and path
+    let mut event = Event::new("window_focus".to_string(), EventType::WindowFocus);
+    event.app = Some("VSCode".to_string());
+    event.path = Some("/home/user/projects/myproject/src/main.rs".to_string());
+
+    let entities = normalizer.extract_entities(&event);
+
+    // Should extract app entity
+    assert!(entities.iter().any(|e| e.entity_type == EntityType::App && e.name == "VSCode"));
+
+    // Should extract project entity
+    assert!(entities.iter().any(|e| e.entity_type == EntityType::Project && e.name == "myproject"));
+}
+
+#[test]
+fn test_normalizer_infer_project_key() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let normalizer = Normalizer::new(Arc::new(Mutex::new(conn)));
+
+    // Create event with project path
+    let mut event = Event::new("file_activity".to_string(), EventType::FileModify);
+    event.path = Some("/home/user/projects/myproject/src/main.rs".to_string());
+
+    let project_key = normalizer.infer_project_key(&event);
+
+    assert_eq!(project_key, Some("myproject".to_string()));
+}
+
+#[test]
+fn test_normalizer_matches_pattern_glob() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let normalizer = Normalizer::new(Arc::new(Mutex::new(conn)));
+
+    // Test glob patterns
+    assert!(normalizer.matches_pattern("/home/user/passwords/secret.txt", "**/passwords/**"));
+    assert!(normalizer.matches_pattern("/home/user/passwords/secret.txt", "**/passwords/*"));
+    assert!(!normalizer.matches_pattern("/home/user/documents/file.txt", "**/passwords/**"));
+
+    // Test wildcard
+    assert!(normalizer.matches_pattern("test.txt", "*.txt"));
+    assert!(!normalizer.matches_pattern("test.txt", "*.md"));
+
+    // Test exact match
+    assert!(normalizer.matches_pattern("exact_match", "exact_match"));
+    assert!(!normalizer.matches_pattern("exact_match", "different_match"));
+}
+
+#[test]
+fn test_normalizer_hash_value() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let normalizer = Normalizer::new(Arc::new(Mutex::new(conn)));
+
+    let value1 = "test_value";
+    let value2 = "test_value";
+    let value3 = "different_value";
+
+    let hash1 = normalizer.hash_value(value1);
+    let hash2 = normalizer.hash_value(value2);
+    let hash3 = normalizer.hash_value(value3);
+
+    // Same values should produce same hash
+    assert_eq!(hash1, hash2);
+
+    // Different values should produce different hash
+    assert_ne!(hash1, hash3);
+
+    // Hash should be hex string
+    assert!(hash1.chars().all(|c| c.is_ascii_hexdigit()));
+}

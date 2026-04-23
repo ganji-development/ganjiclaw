@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/zeroclaw-api", "crates/zeroclaw-infra", "crates/zeroclaw-config", "crates/zeroclaw-providers", "crates/zeroclaw-memory", "crates/zeroclaw-channels", "crates/zeroclaw-tools", "crates/zeroclaw-runtime", "crates/zeroclaw-tui", "crates/zeroclaw-plugins", "crates/zeroclaw-gateway", "crates/zeroclaw-hardware", "crates/zeroclaw-tool-call-parser", "crates/robot-kit", "crates/aardvark-sys", "crates/zeroclaw-macros", "apps/tauri"]
+members = [".", "crates/zeroclaw-api", "crates/zeroclaw-infra", "crates/zeroclaw-config", "crates/zeroclaw-providers", "crates/zeroclaw-memory", "crates/zeroclaw-channels", "crates/zeroclaw-tools", "crates/zeroclaw-runtime", "crates/zeroclaw-tui", "crates/zeroclaw-plugins", "crates/zeroclaw-gateway", "crates/zeroclaw-hardware", "crates/zeroclaw-tool-call-parser", "crates/zeroclaw-activity-archive", "crates/robot-kit", "crates/aardvark-sys", "crates/zeroclaw-macros", "apps/tauri"]
 resolver = "2"
 
 [workspace.package]
@@ -23,6 +23,7 @@ zeroclaw-plugins = { path = "crates/zeroclaw-plugins", version = "0.7.3" }
 zeroclaw-gateway = { path = "crates/zeroclaw-gateway", version = "0.7.3" }
 zeroclaw-hardware = { path = "crates/zeroclaw-hardware", version = "0.7.3" }
 zeroclaw-tool-call-parser = { path = "crates/zeroclaw-tool-call-parser", version = "0.7.3" }
+zeroclaw-activity-archive = { path = "crates/zeroclaw-activity-archive", version = "0.1.0" }
 zeroclaw-macros = { path = "crates/zeroclaw-macros", version = "0.7.3" }
 aardvark-sys = { path = "crates/aardvark-sys", version = "0.1.0" }
 
@@ -169,7 +170,7 @@ ring = { version = "0.17", optional = true }
 lru = { version = "0.16", optional = true }
 
 # Memory / persistence (migration.rs, behind agent-runtime)
-rusqlite = { version = "0.37", features = ["bundled"], optional = true }
+rusqlite = { version = "0.37.0", features = ["bundled"], optional = true }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 chrono-tz = { version = "0.10", optional = true }
 cron = { version = "0.15", optional = true }

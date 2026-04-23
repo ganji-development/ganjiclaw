@@ -4,8 +4,10 @@
   "version": "0.7.1",
   "identifier": "ai.zeroclawlabs.desktop",
   "build": {
-    "devUrl": "http://127.0.0.1:42617/_app/",
-    "frontendDist": "http://127.0.0.1:42617/_app/"
+    "beforeBuildCommand": "pnpm -C ../web install && pnpm -C ../web build -- --base=/",
+    "beforeDevCommand": "pnpm -C ../web dev -- --base=/",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../../web/dist"
   },
   "app": {
     "windows": [
@@ -15,7 +17,7 @@
         "height": 800,
         "resizable": true,
         "fullscreen": false,
-        "visible": false
+        "visible": true
       }
     ],
     "security": {
@@ -41,7 +43,9 @@
         "installerIcon": "icons/icon.ico"
       },
       "wix": {
-        "language": ["en-US"]
+        "language": [
+          "en-US"
+        ]
       }
     }
   }

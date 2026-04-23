@@ -4,11 +4,10 @@ pub mod commands;
 pub mod gateway_client;
 pub mod health;
 pub mod state;
-pub mod tray;
 
 use gateway_client::GatewayClient;
 use state::shared_state;
-use tauri::{Manager, RunEvent};
+use tauri::Manager;
 
 /// Attempt to auto-pair with the gateway so the WebView has a valid token
 /// before the React frontend mounts. Runs on localhost so the admin endpoints
@@ -105,9 +104,6 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             set_dock_icon();
 
-            // Set up the system tray.
-            let _ = tray::setup_tray(app);
-
             // Auto-pair with gateway and inject token into the WebView.
             let app_handle = app.handle().clone();
             let pair_state = shared.clone();
@@ -126,11 +122,5 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app, event| {
-            // Keep the app running in the background when all windows are closed.
-            // This is the standard pattern for menu bar / tray apps.
-            if let RunEvent::ExitRequested { api, .. } = event {
-                api.prevent_exit();
-            }
-        });
+        .run(|_app, _event| {});
 }

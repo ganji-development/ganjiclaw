@@ -30,6 +30,14 @@ function statusBadge(status: Integration['status']) {
         border: 'var(--pc-border)',
         bg: 'transparent'
       };
+    default:
+      return {
+        icon: Puzzle,
+        label: status,
+        color: 'var(--pc-text-muted)',
+        border: 'var(--pc-border)',
+        bg: 'transparent'
+      };
   }
 }
 
@@ -40,7 +48,7 @@ export default function Integrations() {
   const [activeCategory, setActiveCategory] = useState<string>('all');
 
   useEffect(() => {
-    getIntegrations().then(setIntegrations).catch((err) => setError(err.message)).finally(() => setLoading(false));
+    getIntegrations().then(setIntegrations).catch((err: Error) => setError(err.message)).finally(() => setLoading(false));
   }, []);
 
   const categories = ['all',

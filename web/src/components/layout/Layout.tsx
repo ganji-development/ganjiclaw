@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from '@/components/layout/Sidebar';
 import Header from '@/components/layout/Header';
-import { ErrorBoundary } from '@/App';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const SIDEBAR_COLLAPSED_KEY = 'zeroclaw-sidebar-collapsed';
 
@@ -19,7 +19,10 @@ export default function Layout() {
 
   // Close sidebar on route change (mobile navigation)
   useEffect(() => {
-    setSidebarOpen(false);
+    // Schedule update to avoid synchronous cascading render warning
+    Promise.resolve().then(() => {
+      setSidebarOpen(false);
+    });
   }, [pathname]);
 
   // Persist collapsed state

@@ -30,13 +30,15 @@ interface ChatMessage {
 
 const DRAFT_KEY = 'agent-chat';
 
+
 export default function AgentChat() {
   const sessionIdRef = useRef(getOrCreateSessionId());
   const { draft, saveDraft, clearDraft } = useDraft(DRAFT_KEY);
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     // Synchronously hydrate from localStorage so messages survive tab switches
     // without a flash of empty state. Server hydration may override later.
-    const persisted = loadChatHistory(sessionIdRef.current);
+    const sid = getOrCreateSessionId();
+    const persisted = loadChatHistory(sid);
     return persisted.length > 0 ? persistedToUiMessages(persisted) : [];
   });
   const [historyReady, setHistoryReady] = useState(false);
@@ -340,34 +342,12 @@ export default function AgentChat() {
 
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(content).then(onSuccess).catch(() => {
-        // Fallback for insecure contexts (HTTP)
-        fallbackCopy(content) && onSuccess();
+        // Fallback removed due to deprecation. Clipboard write failed.
       });
-    } else {
-      fallbackCopy(content) && onSuccess();
     }
   }, []);
 
-  /**
-   * Fallback copy using a temporary textarea for HTTP contexts
-   * where navigator.clipboard is unavailable.
-   */
-  function fallbackCopy(text: string): boolean {
-    const textarea = document.createElement('textarea');
-    textarea.value = text;
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    document.body.appendChild(textarea);
-    textarea.select();
-    try {
-      document.execCommand('copy');
-      return true;
-    } catch {
-      return false;
-    } finally {
-      document.body.removeChild(textarea);
-    }
-  }
+
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">

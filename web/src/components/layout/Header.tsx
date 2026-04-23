@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { LogOut, Settings, ChevronDown, PanelLeftClose, PanelLeftOpen, Menu } from 'lucide-react';
 import { t, SUPPORTED_LOCALES } from '@/lib/i18n';
-import { useLocaleContext } from '@/App';
+import { useLocaleContext } from '@/contexts/LocaleContext';
 import { useAuth } from '@/hooks/useAuth';
 import { SettingsModal } from '@/components/SettingsModal';
 

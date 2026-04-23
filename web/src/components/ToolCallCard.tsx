@@ -1,3 +1,4 @@
+import React from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
   Terminal, FileText, FilePlus, FileEdit, Search, FolderSearch,
@@ -49,7 +50,6 @@ function truncate(text: string, max: number): string {
 }
 
 export default function ToolCallCard({ toolCall }: ToolCallCardProps) {
-  const Icon = getIcon(toolCall.name);
   const resolved = toolCall.output !== undefined;
 
   const argsStr = toolCall.args != null
@@ -62,7 +62,10 @@ export default function ToolCallCard({ toolCall }: ToolCallCardProps) {
   return (
     <div className="tool-card">
       <div className="tool-card__header">
-        <Icon className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--pc-accent)' }} />
+        {React.createElement(getIcon(toolCall.name), {
+          className: "h-4 w-4 flex-shrink-0",
+          style: { color: 'var(--pc-accent)' }
+        })}
         <span>{toolCall.name}</span>
         {resolved ? (
           <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" style={{ color: '#34d399' }} />

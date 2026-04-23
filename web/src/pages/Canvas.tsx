@@ -26,7 +26,6 @@ export default function Canvas() {
   const [showHistory, setShowHistory] = useState(false);
   const [canvasList, setCanvasList] = useState<string[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Build WebSocket URL for canvas
   const getWsUrl = useCallback((id: string) => {
@@ -92,14 +91,17 @@ export default function Canvas() {
     return () => clearInterval(interval);
   }, []);
 
+  const [iframeContent, setIframeContent] = useState<string>('');
+
   // Render content into the iframe
   useEffect(() => {
-    if (!iframeRef.current || !currentFrame) return;
+    if (!currentFrame) {
+      Promise.resolve().then(() => {
+        setIframeContent('');
+      });
+      return;
+    }
     if (currentFrame.content_type === 'eval') return; // eval frames are special
-
-    const iframe = iframeRef.current;
-    const doc = iframe.contentDocument;
-    if (!doc) return;
 
     let html = currentFrame.content;
     if (currentFrame.content_type === 'svg') {
@@ -119,9 +121,9 @@ export default function Canvas() {
       html = `<!DOCTYPE html><html><head><style>body{margin:1rem;font-family:monospace;color:#e0e0e0;background:#1a1a2e;white-space:pre-wrap;}</style></head><body>${escaped}</body></html>`;
     }
 
-    doc.open();
-    doc.write(html);
-    doc.close();
+    Promise.resolve().then(() => {
+      setIframeContent(html);
+    });
   }, [currentFrame]);
 
   const handleSwitchCanvas = () => {
@@ -252,7 +254,7 @@ export default function Canvas() {
         >
           {currentFrame ? (
             <iframe
-              ref={iframeRef}
+              srcDoc={iframeContent}
               sandbox="allow-scripts allow-same-origin"
               className="w-full h-full border-0"
               title={`Canvas: ${canvasId}`}

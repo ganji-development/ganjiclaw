@@ -452,6 +452,16 @@ pub struct Config {
     #[serde(default)]
     #[nested]
     pub shell_tool: ShellToolConfig,
+
+    /// Activity archive configuration (`[activity_archive]`).
+    ///
+    /// Desktop activity tracking and archival system for Windows.
+    /// Collects window focus, process launches, browser history, shell activity,
+    /// and file changes. Stores in database, infers sessions, generates summaries,
+    /// and syncs to Notion.
+    #[serde(default)]
+    #[nested]
+    pub activity_archive: ActivityArchiveConfig,
 }
 
 /// Multi-client workspace isolation configuration.
@@ -2956,6 +2966,287 @@ impl Default for ShellToolConfig {
             timeout_secs: default_shell_tool_timeout_secs(),
         }
     }
+}
+
+// ── Activity Archive ───────────────────────────────────────────────
+
+/// Activity archive configuration (`[activity_archive]` section).
+///
+/// Desktop activity tracking and archival system for Windows.
+/// Collects window focus, process launches, browser history, shell activity,
+/// and file changes. Stores in database, infers sessions, generates summaries,
+/// and syncs to Notion.
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "activity_archive"]
+pub struct ActivityArchiveConfig {
+    /// Enable activity archive. Default: false.
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Path to activity archive database. Default: workspace/activity_archive.db.
+    #[serde(default)]
+    pub database_path: Option<String>,
+
+    /// Collector configuration.
+    #[serde(default)]
+    pub collectors: CollectorConfig,
+
+    /// Sessionizer configuration.
+    #[serde(default)]
+    pub sessionizer: SessionizerConfig,
+
+    /// Summarizer configuration.
+    #[serde(default)]
+    pub summarizer: SummarizerConfig,
+
+    /// Notion sync configuration.
+    #[serde(default)]
+    pub notion_sync: NotionSyncConfig,
+
+    /// Privacy configuration.
+    #[serde(default)]
+    pub privacy: PrivacyConfig,
+}
+
+/// Collector configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "collectors"]
+pub struct CollectorConfig {
+    /// Enable window focus collector. Default: true.
+    #[serde(default = "default_true")]
+    pub window_focus: bool,
+
+    /// Enable process launch collector. Default: true.
+    #[serde(default = "default_true")]
+    pub process_launch: bool,
+
+    /// Enable browser history collector. Default: true.
+    #[serde(default = "default_true")]
+    pub browser_history: bool,
+
+    /// Enable shell activity collector. Default: true.
+    #[serde(default = "default_true")]
+    pub shell_activity: bool,
+
+    /// Enable file activity collector. Default: false.
+    #[serde(default)]
+    pub file_activity: bool,
+
+    /// Folders to monitor for file activity.
+    #[serde(default)]
+    pub file_activity_folders: Vec<String>,
+
+    /// Poll interval for collectors in seconds. Default: 2.
+    #[serde(default = "default_collector_poll_interval")]
+    pub poll_interval_seconds: u64,
+}
+
+/// Sessionizer configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "sessionizer"]
+pub struct SessionizerConfig {
+    /// Idle timeout in minutes before ending a session. Default: 30.
+    #[serde(default = "default_idle_timeout_minutes")]
+    pub idle_timeout_minutes: u64,
+
+    /// Context switch threshold in minutes. Default: 15.
+    #[serde(default = "default_context_switch_threshold_minutes")]
+    pub context_switch_threshold_minutes: u64,
+}
+
+/// Summarizer configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "summarizer"]
+pub struct SummarizerConfig {
+    /// Enable summarization. Default: true.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Enable hourly summaries. Default: true.
+    #[serde(default = "default_true")]
+    pub hourly_summary_enabled: bool,
+
+    /// Enable daily logs. Default: true.
+    #[serde(default = "default_true")]
+    pub daily_log_enabled: bool,
+
+    /// Enable project summaries. Default: true.
+    #[serde(default = "default_true")]
+    pub project_summary_enabled: bool,
+}
+
+/// Notion sync configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "notion_sync"]
+pub struct NotionSyncConfig {
+    /// Enable Notion sync. Default: false.
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Notion API key.
+    #[serde(default)]
+    pub api_key: String,
+
+    /// Notion database ID for daily logs.
+    #[serde(default)]
+    pub daily_logs_database_id: String,
+
+    /// Notion database ID for sessions.
+    #[serde(default)]
+    pub sessions_database_id: String,
+
+    /// Notion database ID for projects.
+    #[serde(default)]
+    pub projects_database_id: String,
+
+    /// Sync interval in minutes. Default: 5.
+    #[serde(default = "default_sync_interval_minutes")]
+    pub sync_interval_minutes: u64,
+}
+
+/// Privacy configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Configurable)]
+#[cfg_attr(feature = "schema-export", derive(schemars::JsonSchema))]
+#[prefix = "privacy"]
+pub struct PrivacyConfig {
+    /// Paths to exclude from collection.
+    #[serde(default)]
+    pub exclude_paths: Vec<String>,
+
+    /// Window titles to exclude from collection.
+    #[serde(default)]
+    pub exclude_titles: Vec<String>,
+
+    /// Domains to exclude from collection.
+    #[serde(default)]
+    pub exclude_domains: Vec<String>,
+
+    /// Redact clipboard contents. Default: true.
+    #[serde(default = "default_true")]
+    pub redact_clipboard: bool,
+
+    /// Clipboard content whitelist (patterns to not redact).
+    #[serde(default)]
+    pub clipboard_whitelist: Vec<String>,
+}
+
+fn default_collector_poll_interval() -> u64 {
+    2
+}
+
+fn default_idle_timeout_minutes() -> u64 {
+    30
+}
+
+fn default_context_switch_threshold_minutes() -> u64 {
+    15
+}
+
+fn default_sync_interval_minutes() -> u64 {
+    5
+}
+
+impl Default for ActivityArchiveConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            database_path: None,
+            collectors: Default::default(),
+            sessionizer: Default::default(),
+            summarizer: Default::default(),
+            notion_sync: Default::default(),
+            privacy: Default::default(),
+        }
+    }
+}
+
+impl Default for CollectorConfig {
+    fn default() -> Self {
+        Self {
+            window_focus: true,
+            process_launch: true,
+            browser_history: true,
+            shell_activity: true,
+            file_activity: false,
+            file_activity_folders: Vec::new(),
+            poll_interval_seconds: default_collector_poll_interval(),
+        }
+    }
+}
+
+impl Default for SessionizerConfig {
+    fn default() -> Self {
+        Self {
+            idle_timeout_minutes: default_idle_timeout_minutes(),
+            context_switch_threshold_minutes: default_context_switch_threshold_minutes(),
+        }
+    }
+}
+
+impl Default for SummarizerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            hourly_summary_enabled: true,
+            daily_log_enabled: true,
+            project_summary_enabled: true,
+        }
+    }
+}
+
+impl Default for NotionSyncConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            api_key: String::new(),
+            daily_logs_database_id: String::new(),
+            sessions_database_id: String::new(),
+            projects_database_id: String::new(),
+            sync_interval_minutes: default_sync_interval_minutes(),
+        }
+    }
+}
+
+impl Default for PrivacyConfig {
+    fn default() -> Self {
+        Self {
+            exclude_paths: Vec::new(),
+            exclude_titles: Vec::new(),
+            exclude_domains: Vec::new(),
+            redact_clipboard: true,
+            clipboard_whitelist: Vec::new(),
+        }
+    }
+}
+
+// HasPropKind implementations for activity archive config structs
+impl crate::traits::HasPropKind for ActivityArchiveConfig {
+    const PROP_KIND: crate::traits::PropKind = crate::traits::PropKind::Enum;
+}
+
+impl crate::traits::HasPropKind for CollectorConfig {
+    const PROP_KIND: crate::traits::PropKind = crate::traits::PropKind::Enum;
+}
+
+impl crate::traits::HasPropKind for SessionizerConfig {
+    const PROP_KIND: crate::traits::PropKind = crate::traits::PropKind::Enum;
+}
+
+impl crate::traits::HasPropKind for SummarizerConfig {
+    const PROP_KIND: crate::traits::PropKind = crate::traits::PropKind::Enum;
+}
+
+impl crate::traits::HasPropKind for NotionSyncConfig {
+    const PROP_KIND: crate::traits::PropKind = crate::traits::PropKind::Enum;
+}
+
+impl crate::traits::HasPropKind for PrivacyConfig {
+    const PROP_KIND: crate::traits::PropKind = crate::traits::PropKind::Enum;
 }
 
 // ── Web search ───────────────────────────────────────────────────
@@ -9207,6 +9498,7 @@ impl Default for Config {
             opencode_cli: OpenCodeCliConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
+            activity_archive: ActivityArchiveConfig::default(),
         }
     }
 }

@@ -37,7 +37,10 @@ export function useDevices() {
   }, [token]);
 
   useEffect(() => {
-    fetchDevices();
+    // Schedule fetch to avoid synchronous cascading render warning
+    Promise.resolve().then(() => {
+      fetchDevices();
+    });
   }, [fetchDevices]);
 
   return { devices, loading, error, refetch: fetchDevices };

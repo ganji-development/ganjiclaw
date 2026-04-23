@@ -66,15 +66,21 @@ function useApiCall<T>(
           setLoading(false);
         }
       });
-  }, [fetcher, ...deps]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetcher]);
+
+  // Use a stringified version of deps to trigger re-fetch safely
+  const depsKey = JSON.stringify(deps);
 
   useEffect(() => {
     mountedRef.current = true;
-    refetch();
+    // Schedule fetch to avoid synchronous cascading render warning
+    Promise.resolve().then(() => {
+      refetch();
+    });
     return () => {
       mountedRef.current = false;
     };
-  }, [refetch]);
+  }, [refetch, depsKey]);
 
   return { data, error, loading, refetch };
 }

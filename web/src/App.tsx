@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useEffect, createContext, useContext, Component, type ReactNode, type ErrorInfo } from 'react';
+import { useState, useEffect, type SyntheticEvent } from 'react';
 import { ThemeProvider } from './contexts/ThemeContext';
 import Layout from './components/layout/Layout';
 import Dashboard from './pages/Dashboard';
@@ -17,78 +17,16 @@ import Canvas from './pages/Canvas';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { DraftContext, useDraftStore } from './hooks/useDraft';
 import { setLocale, type Locale } from './lib/i18n';
-import { loadLocale, saveLocale } from './contexts/ThemeContext';
+import { loadLocale, saveLocale } from './contexts/ThemeContextUtils';
 import { basePath } from './lib/basePath';
 import { getAdminPairCode } from './lib/api';
-
-// Locale context
-interface LocaleContextType {
-  locale: string;
-  setAppLocale: (locale: string) => void;
-}
-
-export const LocaleContext = createContext<LocaleContextType>({
-  locale: 'en',
-  setAppLocale: () => {},
-});
-
-export const useLocaleContext = () => useContext(LocaleContext);
+import { LocaleContext } from './contexts/LocaleContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 // ---------------------------------------------------------------------------
-// Error boundary — catches render crashes and shows a recoverable message
-// instead of a black screen
-// ---------------------------------------------------------------------------
-
-interface ErrorBoundaryState {
-  error: Error | null;
-}
-
-export class ErrorBoundary extends Component<
-  { children: ReactNode },
-  ErrorBoundaryState
-> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { error: null };
-  }
-
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { error };
-  }
-
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('[ZeroClaw] Render error:', error, info.componentStack);
-  }
-
-  render() {
-    if (this.state.error) {
-      return (
-        <div className="p-6">
-          <div className="card p-6 w-full max-w-lg" style={{ borderColor: 'rgba(239, 68, 68, 0.3)' }}>
-            <h2 className="text-lg font-semibold mb-2" style={{ color: 'var(--color-status-error)' }}>
-              Something went wrong
-            </h2>
-            <p className="text-sm mb-4" style={{ color: 'var(--pc-text-muted)' }}>
-              A render error occurred. Check the browser console for details.
-            </p>
-            <pre className="text-xs rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all font-mono" style={{ background: 'var(--pc-bg-base)', color: 'var(--color-status-error)' }}>
-              {this.state.error.message}
-            </pre>
-            <button
-              onClick={() => this.setState({ error: null })}
-              className="btn-electric mt-6 px-4 py-2 text-sm font-medium"
-            >
-              Try again
-            </button>
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
 // Pairing dialog component
+// ---------------------------------------------------------------------------
+
 function PairingDialog({ onPair }: { onPair: (code: string) => Promise<void> }) {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
@@ -115,7 +53,7 @@ function PairingDialog({ onPair }: { onPair: (code: string) => Promise<void> }) 
     return () => { cancelled = true; };
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: SyntheticEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
@@ -250,10 +188,12 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ThemeProvider>
-        <AppContent />
-      </ThemeProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <ThemeProvider>
+          <AppContent />
+        </ThemeProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
