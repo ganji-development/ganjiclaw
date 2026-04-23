@@ -29,7 +29,7 @@ export interface ComponentHealth {
 export interface ToolSpec {
   name: string;
   description: string;
-  parameters: any;
+  parameters: Record<string, unknown>;
 }
 
 export interface CronJob {
@@ -127,7 +127,7 @@ export interface ChannelDetail {
 export interface SSEEvent {
   type: string;
   timestamp?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface WsMessage {
@@ -146,7 +146,7 @@ export interface WsMessage {
   content?: string;
   full_response?: string;
   name?: string;
-  args?: any;
+  args?: Record<string, unknown>;
   output?: string;
   message?: string;
   code?: string;

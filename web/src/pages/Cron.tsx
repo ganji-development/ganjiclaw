@@ -53,7 +53,12 @@ function RunHistoryPanel({ jobId }: { jobId: string }) {
       .finally(() => setLoading(false));
   }, [jobId]);
 
-  useEffect(() => { fetchRuns(); }, [fetchRuns]);
+  useEffect(() => {
+    // Schedule fetch to avoid synchronous cascading render warning
+    Promise.resolve().then(() => {
+      fetchRuns();
+    });
+  }, [fetchRuns]);
 
   if (loading) {
     return (
@@ -210,8 +215,11 @@ export default function Cron() {
   };
 
   useEffect(() => {
-    fetchJobs();
-    fetchSettings();
+    // Schedule fetch to avoid synchronous cascading render warning
+    Promise.resolve().then(() => {
+      fetchJobs();
+      fetchSettings();
+    });
   }, []);
 
   const handleSubmit = async () => {

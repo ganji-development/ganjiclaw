@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { WebSocketClient, type WebSocketClientOptions } from '../lib/ws';
 import type { WsMessage } from '../types/api';
 
@@ -39,13 +39,19 @@ export function useWebSocket(
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
   const [messages, setMessages] = useState<WsMessage[]>([]);
 
+  const wsOptionsMemo = useRef(wsOptions);
+
+  useLayoutEffect(() => {
+    wsOptionsMemo.current = wsOptions;
+  });
+
   // Stable reference to the client across renders
   const getClient = useCallback((): WebSocketClient => {
     if (!clientRef.current) {
-      clientRef.current = new WebSocketClient(wsOptions);
+      clientRef.current = new WebSocketClient(wsOptionsMemo.current);
     }
     return clientRef.current;
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // Setup handlers and optionally connect on mount
   useEffect(() => {
@@ -68,8 +74,11 @@ export function useWebSocket(
     };
 
     if (autoConnect) {
-      setStatus('connecting');
-      client.connect();
+      // Schedule update to avoid synchronous cascading render warning
+      Promise.resolve().then(() => {
+        setStatus('connecting');
+        client.connect();
+      });
     }
 
     return () => {

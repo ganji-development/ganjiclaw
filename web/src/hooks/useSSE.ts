@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { SSEClient, type SSEClientOptions } from '../lib/sse';
 import type { SSEEvent } from '../types/api';
 
@@ -46,18 +46,23 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEResult {
 
   // Keep filter in a ref so the callback doesn't need to be recreated
   const filterRef = useRef(filterTypes);
-  filterRef.current = filterTypes;
-
   const maxRef = useRef(maxEvents);
-  maxRef.current = maxEvents;
+
+  const sseOptionsMemo = useRef(sseOptions);
+
+  useLayoutEffect(() => {
+    filterRef.current = filterTypes;
+    maxRef.current = maxEvents;
+    sseOptionsMemo.current = sseOptions;
+  });
 
   // Stable reference to the client across renders
   const getClient = useCallback((): SSEClient => {
     if (!clientRef.current) {
-      clientRef.current = new SSEClient(sseOptions);
+      clientRef.current = new SSEClient(sseOptionsMemo.current);
     }
     return clientRef.current;
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // Setup handlers and optionally connect on mount
   useEffect(() => {
@@ -88,8 +93,11 @@ export function useSSE(options: UseSSEOptions = {}): UseSSEResult {
     };
 
     if (autoConnect) {
-      setStatus('connecting');
-      client.connect();
+      // Schedule update to avoid synchronous cascading render warning
+      Promise.resolve().then(() => {
+        setStatus('connecting');
+        client.connect();
+      });
     }
 
     return () => {

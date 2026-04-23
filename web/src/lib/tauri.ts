@@ -8,7 +8,10 @@ declare global {
 }
 
 /** Returns true when running inside a Tauri WebView. */
-export const isTauri = (): boolean => '__TAURI__' in window;
+export const isTauri = (): boolean => 
+  '__TAURI__' in window || 
+  '__TAURI_INTERNALS__' in window || 
+  window.location.protocol === 'tauri:';
 
 /** Gateway base URL when running inside Tauri (defaults to localhost). */
 export const tauriGatewayUrl = (): string =>

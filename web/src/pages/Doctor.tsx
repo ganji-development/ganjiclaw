@@ -19,6 +19,8 @@ function severityIcon(severity: DiagResult['severity']) {
       return <AlertTriangle className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--color-status-warning)' }} />;
     case 'error':
       return <XCircle className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--color-status-error)' }} />;
+    default:
+      return null;
   }
 }
 
@@ -30,6 +32,8 @@ function severityBg(severity: DiagResult['severity']): string {
       return 'rgba(255, 170, 0, 0.04)';
     case 'error':
       return 'rgba(239, 68, 68, 0.04)';
+    default:
+      return 'transparent';
   }
 }
 
@@ -41,6 +45,8 @@ function severityBorder(severity: DiagResult['severity']): string {
       return 'border-[rgba(255,170,0,0.3)]';
     case 'error':
       return 'border-[rgba(239,68,68,0.3)]';
+    default:
+      return 'border-transparent';
   }
 }
 
@@ -182,7 +188,7 @@ export default function Doctor() {
                   {items.map((result, idx) => (
                     <div
                       key={`${category}-${idx}`}
-                      className={`flex items-start gap-3 rounded-xl border p-3 ${severityBorder(result.severity,)} ${severityBg(result.severity)}`}
+                      className={`flex items-start gap-3 rounded-xl border p-3 ${severityBorder(result.severity)} ${severityBg(result.severity)}`}
                     >
                       {severityIcon(result.severity)}
                       <div className="min-w-0">

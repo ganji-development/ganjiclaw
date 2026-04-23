@@ -41,12 +41,15 @@ export default function Memory() {
     setLoading(true);
     getMemory(q || undefined, cat || undefined)
     .then(setEntries)
-    .catch((err) => setError(err.message))
+    .catch((err: Error) => setError(err.message))
     .finally(() => setLoading(false));
   };
 
   useEffect(() => {
-    fetchEntries();
+    // Schedule fetch to avoid synchronous cascading render warning
+    Promise.resolve().then(() => {
+      fetchEntries();
+    });
   }, []);
 
   const handleSearch = () => {
