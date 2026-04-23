@@ -75,7 +75,7 @@ impl LucidMemory {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     #[allow(clippy::too_many_arguments)]
     fn with_options(
         workspace_dir: &Path,

@@ -64,3 +64,10 @@ rust_out
 
 # Auto-generated Tauri schemas
 apps/tauri/gen/schemas/
+
+GEMINI.md
+zeroclaw-activity-archive-summary.md
+CLAUDE.md
+AGENTS.md
+AGENTS.md
+CLAUDE.md

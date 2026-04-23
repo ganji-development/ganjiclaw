@@ -9,15 +9,64 @@ pub fn handle_command(
     config: &Config,
     init_system: InitSystem,
 ) -> Result<()> {
+    let installed_scope = read_installed_scope(config);
+
     match command {
-        crate::ServiceCommands::Install => install(config, init_system),
-        crate::ServiceCommands::Start => start(config, init_system),
-        crate::ServiceCommands::Stop => stop(config, init_system),
-        crate::ServiceCommands::Restart => restart(config, init_system),
-        crate::ServiceCommands::Status => status(config, init_system),
-        crate::ServiceCommands::Uninstall => uninstall(config, init_system),
-        crate::ServiceCommands::Logs { lines, follow } => {
-            logs(config, init_system, *lines, *follow)
+        crate::ServiceCommands::Install { scope } => {
+            let scope = scope
+                .as_deref()
+                .map(str::parse)
+                .transpose()?
+                .unwrap_or(ServiceScope::User);
+            install(config, init_system, scope)
+        }
+        crate::ServiceCommands::Start { scope } => {
+            let scope = scope
+                .as_deref()
+                .map(str::parse)
+                .transpose()?
+                .unwrap_or_else(|| installed_scope.unwrap_or(ServiceScope::User));
+            start(config, init_system, scope)
+        }
+        crate::ServiceCommands::Stop { scope } => {
+            let scope = scope
+                .as_deref()
+                .map(str::parse)
+                .transpose()?
+                .unwrap_or_else(|| installed_scope.unwrap_or(ServiceScope::User));
+            stop(config, init_system, scope)
+        }
+        crate::ServiceCommands::Restart { scope } => {
+            let scope = scope
+                .as_deref()
+                .map(str::parse)
+                .transpose()?
+                .unwrap_or_else(|| installed_scope.unwrap_or(ServiceScope::User));
+            restart(config, init_system, scope)
+        }
+        crate::ServiceCommands::Status { scope } => {
+            let scope = scope.as_deref().map(str::parse).transpose()?;
+            status(config, init_system, scope)
+        }
+        crate::ServiceCommands::Uninstall { scope } => {
+            let scope = scope
+                .as_deref()
+                .map(str::parse)
+                .transpose()?
+                .unwrap_or_else(|| installed_scope.unwrap_or(ServiceScope::User));
+            uninstall(config, init_system, scope)
+        }
+        crate::ServiceCommands::Logs {
+            lines,
+            follow,
+            scope,
+        } => {
+            let scope = scope
+                .as_deref()
+                .map(str::parse)
+                .transpose()?
+                .unwrap_or_else(|| installed_scope.unwrap_or(ServiceScope::User));
+            logs(config, init_system, scope, *lines, *follow)
         }
     }
 }

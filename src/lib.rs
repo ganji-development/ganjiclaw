@@ -181,17 +181,45 @@ Examples:
 #[derive(Subcommand, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ServiceCommands {
     /// Install daemon service unit for auto-start and restart
-    Install,
+    Install {
+        /// Install scope: "user" (per-user, no admin) or "system" (machine-wide,
+        /// requires admin / root). On Windows, "user" installs a Task Scheduler
+        /// task; "system" installs a Windows SCM service that starts at boot.
+        /// Defaults to "user" on first install; otherwise defaults to the
+        /// previously installed scope. Pass explicitly to switch scopes.
+        #[arg(long, value_parser = ["user", "system"])]
+        scope: Option<String>,
+    },
     /// Start daemon service
-    Start,
+    Start {
+        /// Defaults to the scope used at install time.
+        #[arg(long, value_parser = ["user", "system"])]
+        scope: Option<String>,
+    },
     /// Stop daemon service
-    Stop,
+    Stop {
+        /// Defaults to the scope used at install time.
+        #[arg(long, value_parser = ["user", "system"])]
+        scope: Option<String>,
+    },
     /// Restart daemon service to apply latest config
-    Restart,
+    Restart {
+        /// Defaults to the scope used at install time.
+        #[arg(long, value_parser = ["user", "system"])]
+        scope: Option<String>,
+    },
     /// Check daemon service status
-    Status,
+    Status {
+        /// Defaults to the scope used at install time.
+        #[arg(long, value_parser = ["user", "system"])]
+        scope: Option<String>,
+    },
     /// Uninstall daemon service unit
-    Uninstall,
+    Uninstall {
+        /// Defaults to the scope used at install time.
+        #[arg(long, value_parser = ["user", "system"])]
+        scope: Option<String>,
+    },
     /// Tail daemon service logs
     Logs {
         /// Number of lines to show (default: 50)
@@ -200,6 +228,9 @@ pub enum ServiceCommands {
         /// Follow log output (like tail -f)
         #[arg(short, long)]
         follow: bool,
+        /// Defaults to the scope used at install time.
+        #[arg(long, value_parser = ["user", "system"])]
+        scope: Option<String>,
     },
 }
 
