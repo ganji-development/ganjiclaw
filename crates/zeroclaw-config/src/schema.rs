@@ -5632,50 +5632,98 @@ fn is_valid_env_var_name(name: &str) -> bool {
     chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 
+fn default_allowed_commands() -> Vec<String> {
+    #[cfg(target_os = "windows")]
+    {
+        vec![
+            "git".into(),
+            "pnpm".into(),
+            "cargo".into(),
+            "echo".into(),
+            "python".into(),
+            "python3".into(),
+            "pip".into(),
+            "node".into(),
+            "dir".into(),
+            "type".into(),
+            "findstr".into(),
+            "where".into(),
+            "powershell".into(),
+        ]
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        vec![
+            "git".into(),
+            "pnpm".into(),
+            "cargo".into(),
+            "ls".into(),
+            "cat".into(),
+            "grep".into(),
+            "find".into(),
+            "echo".into(),
+            "pwd".into(),
+            "wc".into(),
+            "head".into(),
+            "tail".into(),
+            "date".into(),
+            "python".into(),
+            "python3".into(),
+            "pip".into(),
+            "node".into(),
+        ]
+    }
+}
+
+fn default_forbidden_paths() -> Vec<String> {
+    #[cfg(target_os = "windows")]
+    {
+        vec![
+            "C:\\Windows".into(),
+            "C:\\Program Files".into(),
+            "C:\\Program Files (x86)".into(),
+            "C:\\ProgramData".into(),
+            "C:\\Recovery".into(),
+            "C:\\System Volume Information".into(),
+            "~/.ssh".into(),
+            "~/.gnupg".into(),
+            "~/.aws".into(),
+        ]
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        vec![
+            "/etc".into(),
+            "/root".into(),
+            "/home".into(),
+            "/usr".into(),
+            "/bin".into(),
+            "/sbin".into(),
+            "/lib".into(),
+            "/opt".into(),
+            "/boot".into(),
+            "/dev".into(),
+            "/proc".into(),
+            "/sys".into(),
+            "/var".into(),
+            "/tmp".into(),
+            "~/.ssh".into(),
+            "~/.gnupg".into(),
+            "~/.aws".into(),
+            "~/.config".into(),
+        ]
+    }
+}
+
 impl Default for AutonomyConfig {
     fn default() -> Self {
         Self {
             level: AutonomyLevel::Supervised,
             workspace_only: true,
-            allowed_commands: vec![
-                "git".into(),
-                "npm".into(),
-                "cargo".into(),
-                "ls".into(),
-                "cat".into(),
-                "grep".into(),
-                "find".into(),
-                "echo".into(),
-                "pwd".into(),
-                "wc".into(),
-                "head".into(),
-                "tail".into(),
-                "date".into(),
-                "python".into(),
-                "python3".into(),
-                "pip".into(),
-                "node".into(),
-            ],
-            forbidden_paths: vec![
-                "/etc".into(),
-                "/root".into(),
-                "/home".into(),
-                "/usr".into(),
-                "/bin".into(),
-                "/sbin".into(),
-                "/lib".into(),
-                "/opt".into(),
-                "/boot".into(),
-                "/dev".into(),
-                "/proc".into(),
-                "/sys".into(),
-                "/var".into(),
-                "/tmp".into(),
-                "~/.ssh".into(),
-                "~/.gnupg".into(),
-                "~/.aws".into(),
-                "~/.config".into(),
-            ],
+            allowed_commands: default_allowed_commands(),
+            forbidden_paths: default_forbidden_paths(),
             max_actions_per_hour: 20,
             max_cost_per_day_cents: 500,
             require_approval_for_medium_risk: true,
@@ -9177,10 +9225,17 @@ struct ActiveWorkspaceState {
 }
 
 fn default_config_dir() -> Result<PathBuf> {
-    if let Ok(home) = std::env::var("HOME")
-        && !home.is_empty()
+    // On non-Windows, check HOME first (standard Unix convention).
+    // On Windows, skip HOME — it can contain MSYS2/Git Bash paths like
+    // "/home/user" which are invalid Windows paths. UserDirs uses the
+    // proper Windows API (FOLDERID_Profile → C:\Users\<name>).
+    #[cfg(not(target_os = "windows"))]
     {
-        return Ok(PathBuf::from(home).join(".zeroclaw"));
+        if let Ok(home) = std::env::var("HOME")
+            && !home.is_empty()
+        {
+            return Ok(PathBuf::from(home).join(".zeroclaw"));
+        }
     }
 
     let home = UserDirs::new()

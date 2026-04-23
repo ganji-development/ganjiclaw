@@ -2,7 +2,7 @@ pub use zeroclaw_runtime::migration::*;
 
 use crate::config::Config;
 use crate::memory::{self, Memory, MemoryCategory};
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use directories::UserDirs;
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use std::collections::HashSet;

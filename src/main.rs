@@ -35,14 +35,14 @@
     unused_imports
 )]
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use dialoguer::{Password, Select};
 use serde::{Deserialize, Serialize};
 use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 use tracing::{info, warn};
-use tracing_subscriber::{EnvFilter, fmt};
+use tracing_subscriber::{fmt, EnvFilter};
 
 fn parse_temperature(s: &str) -> std::result::Result<f64, String> {
     let t: f64 = s.parse().map_err(|e| format!("{e}"))?;
@@ -932,6 +932,22 @@ enum MemoryCommands {
 #[tokio::main]
 #[allow(clippy::too_many_lines)]
 async fn main() -> Result<()> {
+    // Windows SCM entry point. Invoked as `zeroclaw __windows-service-run`
+    // when Windows Service Control Manager starts the service. Hand off to the
+    // dispatcher immediately; never reaches clap or the normal command path.
+    #[cfg(all(target_os = "windows", feature = "agent-runtime"))]
+    {
+        let mut args_iter = std::env::args_os();
+        let _prog = args_iter.next();
+        if args_iter
+            .next()
+            .map(|a| a == "__windows-service-run")
+            .unwrap_or(false)
+        {
+            return zeroclaw_runtime::service::run_as_service();
+        }
+    }
+
     // Install default crypto provider for Rustls TLS.
     // This prevents the error: "could not automatically determine the process-level CryptoProvider"
     // when both aws-lc-rs and ring features are available (or neither is explicitly selected).

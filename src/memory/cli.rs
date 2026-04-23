@@ -1,10 +1,10 @@
 use super::traits::{Memory, MemoryCategory};
 use super::{
-    MemoryBackendKind, classify_memory_backend, create_memory_for_migration,
-    effective_memory_backend_name,
+    classify_memory_backend, create_memory_for_migration, effective_memory_backend_name,
+    MemoryBackendKind,
 };
 use crate::config::Config;
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 use console::style;
 
 /// Handle `zeroclaw memory <subcommand>` CLI commands.
@@ -157,7 +157,7 @@ async fn handle_stats(config: &Config) -> Result<()> {
 
         println!("\n  By category:");
         let mut sorted: Vec<_> = counts.into_iter().collect();
-        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted.sort_by_key(|b| std::cmp::Reverse(b.1));
         for (cat, count) in sorted {
             println!("    {cat:<20} {count}");
         }

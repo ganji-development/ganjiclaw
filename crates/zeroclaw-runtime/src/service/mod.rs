@@ -5,8 +5,41 @@ use std::process::Command;
 use std::str::FromStr;
 use zeroclaw_config::schema::Config;
 
+#[cfg(target_os = "windows")]
+pub mod windows;
+
+#[cfg(target_os = "windows")]
+pub use windows::run_as_service;
+
 const SERVICE_LABEL: &str = "com.zeroclaw.daemon";
 const WINDOWS_TASK_NAME: &str = "ZeroClaw Daemon";
+
+/// Scope for service installation: per-user or machine-wide (system).
+///
+/// On Windows:
+/// - `User`   → Task Scheduler task (triggers at user logon, no admin required)
+/// - `System` → Windows SCM service, auto-start at boot as LocalSystem (admin required)
+///
+/// On macOS/Linux this is currently informational; `User` maps to the existing
+/// per-user behavior (LaunchAgents / `systemctl --user`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ServiceScope {
+    #[default]
+    User,
+    System,
+}
+
+impl FromStr for ServiceScope {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s.to_lowercase().as_str() {
+            "user" => Ok(Self::User),
+            "system" | "machine" => Ok(Self::System),
+            other => bail!("Unknown service scope: '{other}'. Supported: user, system"),
+        }
+    }
+}
 
 /// Supported init systems for service management
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -89,6 +122,39 @@ fn windows_task_name() -> &'static str {
     WINDOWS_TASK_NAME
 }
 
+fn scope_state_file(config: &Config) -> PathBuf {
+    config
+        .config_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(".zeroclaw-service-scope")
+}
+
+/// Read the scope that was used to install the service, if any.
+///
+/// Persisted next to the config file so subsequent `service <cmd>` calls can
+/// default to the installed scope without requiring `--scope`.
+pub fn read_installed_scope(config: &Config) -> Option<ServiceScope> {
+    let path = scope_state_file(config);
+    fs::read_to_string(&path).ok()?.trim().parse().ok()
+}
+
+fn write_installed_scope(config: &Config, scope: ServiceScope) -> Result<()> {
+    let path = scope_state_file(config);
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let s = match scope {
+        ServiceScope::User => "user",
+        ServiceScope::System => "system",
+    };
+    fs::write(&path, s).with_context(|| format!("Failed to write {}", path.display()))
+}
+
+fn clear_installed_scope(config: &Config) {
+    let _ = fs::remove_file(scope_state_file(config));
+}
+
 /// Returns whether the ZeroClaw daemon service is currently running.
 pub fn is_running() -> bool {
     if cfg!(target_os = "macos") {
@@ -98,6 +164,12 @@ pub fn is_running() -> bool {
     } else if cfg!(target_os = "linux") {
         is_running_linux()
     } else if cfg!(target_os = "windows") {
+        #[cfg(target_os = "windows")]
+        {
+            if windows::is_system_running() {
+                return true;
+            }
+        }
         run_capture(Command::new("schtasks").args([
             "/Query",
             "/TN",
@@ -125,21 +197,40 @@ fn is_running_linux() -> bool {
         .unwrap_or(false)
 }
 
-pub fn install(config: &Config, init_system: InitSystem) -> Result<()> {
-    if cfg!(target_os = "macos") {
+pub fn install(config: &Config, init_system: InitSystem, scope: ServiceScope) -> Result<()> {
+    let result = if cfg!(target_os = "macos") {
+        let _ = scope;
         install_macos(config)
     } else if cfg!(target_os = "linux") {
+        let _ = scope;
         let resolved = init_system.resolve()?;
         install_linux(config, resolved)
     } else if cfg!(target_os = "windows") {
-        install_windows(config)
+        #[cfg(target_os = "windows")]
+        {
+            match scope {
+                ServiceScope::User => install_windows_user(config),
+                ServiceScope::System => windows::install_system(),
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = (config, scope);
+            unreachable!()
+        }
     } else {
         anyhow::bail!("Service management is supported on macOS and Linux only");
+    };
+
+    if result.is_ok() {
+        let _ = write_installed_scope(config, scope);
     }
+    result
 }
 
-pub fn start(config: &Config, init_system: InitSystem) -> Result<()> {
+pub fn start(config: &Config, init_system: InitSystem, scope: ServiceScope) -> Result<()> {
     if cfg!(target_os = "macos") {
+        let _ = scope;
         // Ensure the Homebrew var directory exists before launchd tries to use it.
         // The plist may reference this path for WorkingDirectory and log files.
         let exe = std::env::current_exe().ok();
@@ -154,15 +245,27 @@ pub fn start(config: &Config, init_system: InitSystem) -> Result<()> {
         println!("✅ Service started");
         Ok(())
     } else if cfg!(target_os = "linux") {
+        let _ = scope;
         let resolved = init_system.resolve()?;
         start_linux(resolved)
     } else if cfg!(target_os = "windows") {
         let _ = config;
-        run_checked(Command::new("schtasks").args(["/Run", "/TN", windows_task_name()]))?;
-        println!("✅ Service started");
-        Ok(())
+        #[cfg(target_os = "windows")]
+        match resolve_windows_scope(scope) {
+            ServiceScope::User => {
+                run_checked(Command::new("schtasks").args(["/Run", "/TN", windows_task_name()]))?;
+                println!("✅ Service started");
+                Ok(())
+            }
+            ServiceScope::System => windows::start_system(),
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = scope;
+            unreachable!()
+        }
     } else {
-        let _ = config;
+        let _ = (config, scope);
         anyhow::bail!("Service management is supported on macOS and Linux only")
     }
 }
@@ -182,8 +285,9 @@ fn start_linux(init_system: InitSystem) -> Result<()> {
     Ok(())
 }
 
-pub fn stop(config: &Config, init_system: InitSystem) -> Result<()> {
+pub fn stop(config: &Config, init_system: InitSystem, scope: ServiceScope) -> Result<()> {
     if cfg!(target_os = "macos") {
+        let _ = scope;
         let plist = macos_service_file()?;
         let _ = run_checked(Command::new("launchctl").arg("stop").arg(SERVICE_LABEL));
         let _ = run_checked(
@@ -195,16 +299,28 @@ pub fn stop(config: &Config, init_system: InitSystem) -> Result<()> {
         println!("✅ Service stopped");
         Ok(())
     } else if cfg!(target_os = "linux") {
+        let _ = scope;
         let resolved = init_system.resolve()?;
         stop_linux(resolved)
     } else if cfg!(target_os = "windows") {
         let _ = config;
-        let task_name = windows_task_name();
-        let _ = run_checked(Command::new("schtasks").args(["/End", "/TN", task_name]));
-        println!("✅ Service stopped");
-        Ok(())
+        #[cfg(target_os = "windows")]
+        match resolve_windows_scope(scope) {
+            ServiceScope::User => {
+                let task_name = windows_task_name();
+                let _ = run_checked(Command::new("schtasks").args(["/End", "/TN", task_name]));
+                println!("✅ Service stopped");
+                Ok(())
+            }
+            ServiceScope::System => windows::stop_system(),
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = scope;
+            unreachable!()
+        }
     } else {
-        let _ = config;
+        let _ = (config, scope);
         anyhow::bail!("Service management is supported on macOS and Linux only")
     }
 }
@@ -224,10 +340,10 @@ fn stop_linux(init_system: InitSystem) -> Result<()> {
     Ok(())
 }
 
-pub fn restart(config: &Config, init_system: InitSystem) -> Result<()> {
+pub fn restart(config: &Config, init_system: InitSystem, scope: ServiceScope) -> Result<()> {
     if cfg!(target_os = "macos") {
-        stop(config, init_system)?;
-        start(config, init_system)?;
+        stop(config, init_system, scope)?;
+        start(config, init_system, scope)?;
         println!("✅ Service restarted");
         return Ok(());
     }
@@ -238,8 +354,8 @@ pub fn restart(config: &Config, init_system: InitSystem) -> Result<()> {
     }
 
     if cfg!(target_os = "windows") {
-        stop(config, init_system)?;
-        start(config, init_system)?;
+        stop(config, init_system, scope)?;
+        start(config, init_system, scope)?;
         println!("✅ Service restarted");
         return Ok(());
     }
@@ -262,8 +378,9 @@ fn restart_linux(init_system: InitSystem) -> Result<()> {
     Ok(())
 }
 
-pub fn status(config: &Config, init_system: InitSystem) -> Result<()> {
+pub fn status(config: &Config, init_system: InitSystem, scope: Option<ServiceScope>) -> Result<()> {
     if cfg!(target_os = "macos") {
+        let _ = scope;
         let out = run_capture(Command::new("launchctl").arg("list"))?;
         let running = out.lines().any(|line| line.contains(SERVICE_LABEL));
         println!(
@@ -279,29 +396,43 @@ pub fn status(config: &Config, init_system: InitSystem) -> Result<()> {
     }
 
     if cfg!(target_os = "linux") {
+        let _ = scope;
         let resolved = init_system.resolve()?;
         return status_linux(config, resolved);
     }
 
     if cfg!(target_os = "windows") {
         let _ = config;
-        let task_name = windows_task_name();
-        let out =
-            run_capture(Command::new("schtasks").args(["/Query", "/TN", task_name, "/FO", "LIST"]));
-        match out {
-            Ok(text) => {
-                let running = text.contains("Running");
-                println!(
-                    "Service: {}",
-                    if running {
-                        "✅ running"
-                    } else {
-                        "❌ not running"
-                    }
+        #[cfg(target_os = "windows")]
+        {
+            let mut any = false;
+            let show_user = scope.is_none() || scope == Some(ServiceScope::User);
+            let show_system = scope.is_none() || scope == Some(ServiceScope::System);
+
+            if show_user {
+                let task_name = windows_task_name();
+                let task_query = run_capture(
+                    Command::new("schtasks").args(["/Query", "/TN", task_name, "/FO", "LIST"]),
                 );
-                println!("Task: {}", task_name);
+                if let Ok(text) = task_query
+                    && !text.trim().is_empty()
+                {
+                    let running = text.contains("Running");
+                    println!(
+                        "Service: {} (user scope)",
+                        if running { "✅ running" } else { "❌ not running" }
+                    );
+                    println!("Task:    {task_name}");
+                    any = true;
+                }
             }
-            Err(_) => {
+
+            if show_system && windows::is_system_installed() {
+                windows::status_system()?;
+                any = true;
+            }
+
+            if !any {
                 println!("Service: ❌ not installed");
             }
         }
@@ -309,6 +440,11 @@ pub fn status(config: &Config, init_system: InitSystem) -> Result<()> {
     }
 
     anyhow::bail!("Service management is supported on macOS and Linux only")
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_windows_scope(scope: ServiceScope) -> ServiceScope {
+    scope
 }
 
 fn status_linux(config: &Config, init_system: InitSystem) -> Result<()> {
@@ -334,7 +470,14 @@ fn status_linux(config: &Config, init_system: InitSystem) -> Result<()> {
     Ok(())
 }
 
-pub fn logs(config: &Config, init_system: InitSystem, lines: usize, follow: bool) -> Result<()> {
+pub fn logs(
+    config: &Config,
+    init_system: InitSystem,
+    scope: ServiceScope,
+    lines: usize,
+    follow: bool,
+) -> Result<()> {
+    let _ = scope;
     if cfg!(target_os = "macos") {
         return logs_macos(config, lines, follow);
     }
@@ -343,7 +486,7 @@ pub fn logs(config: &Config, init_system: InitSystem, lines: usize, follow: bool
         return logs_linux(config, resolved, lines, follow);
     }
     if cfg!(target_os = "windows") {
-        return logs_windows(config, lines, follow);
+        return logs_windows(config, scope, lines, follow);
     }
     anyhow::bail!("Service log viewing is supported on macOS, Linux, and Windows only")
 }
@@ -441,12 +584,15 @@ fn logs_linux(config: &Config, init_system: InitSystem, lines: usize, follow: bo
     Ok(())
 }
 
-fn logs_windows(config: &Config, lines: usize, follow: bool) -> Result<()> {
-    let logs_dir = config
-        .config_path
-        .parent()
-        .map_or_else(|| PathBuf::from("."), PathBuf::from)
-        .join("logs");
+fn logs_windows(config: &Config, scope: ServiceScope, lines: usize, follow: bool) -> Result<()> {
+    let logs_dir = match scope {
+        ServiceScope::User => config
+            .config_path
+            .parent()
+            .map_or_else(|| PathBuf::from("."), PathBuf::from)
+            .join("logs"),
+        ServiceScope::System => windows::system_logs_dir(),
+    };
 
     let stderr_log = logs_dir.join("daemon.stderr.log");
     let stdout_log = logs_dir.join("daemon.stdout.log");
@@ -510,42 +656,59 @@ fn tail_file(path: &Path, lines: usize, follow: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn uninstall(config: &Config, init_system: InitSystem) -> Result<()> {
-    stop(config, init_system)?;
+pub fn uninstall(config: &Config, init_system: InitSystem, scope: ServiceScope) -> Result<()> {
+    let _ = stop(config, init_system, scope);
 
-    if cfg!(target_os = "macos") {
+    let result: Result<()> = if cfg!(target_os = "macos") {
+        let _ = scope;
         let file = macos_service_file()?;
         if file.exists() {
             fs::remove_file(&file)
                 .with_context(|| format!("Failed to remove {}", file.display()))?;
         }
         println!("✅ Service uninstalled ({})", file.display());
-        return Ok(());
-    }
-
-    if cfg!(target_os = "linux") {
+        Ok(())
+    } else if cfg!(target_os = "linux") {
+        let _ = scope;
         let resolved = init_system.resolve()?;
-        return uninstall_linux(config, resolved);
-    }
-
-    if cfg!(target_os = "windows") {
-        let task_name = windows_task_name();
-        let _ = run_checked(Command::new("schtasks").args(["/Delete", "/TN", task_name, "/F"]));
-        // Remove the wrapper script
-        let wrapper = config
-            .config_path
-            .parent()
-            .map_or_else(|| PathBuf::from("."), PathBuf::from)
-            .join("logs")
-            .join("zeroclaw-daemon.cmd");
-        if wrapper.exists() {
-            fs::remove_file(&wrapper).ok();
+        uninstall_linux(config, resolved)
+    } else if cfg!(target_os = "windows") {
+        #[cfg(target_os = "windows")]
+        {
+            match resolve_windows_scope(scope) {
+                ServiceScope::User => {
+                    let task_name = windows_task_name();
+                    let _ = run_checked(
+                        Command::new("schtasks").args(["/Delete", "/TN", task_name, "/F"]),
+                    );
+                    let wrapper = config
+                        .config_path
+                        .parent()
+                        .map_or_else(|| PathBuf::from("."), PathBuf::from)
+                        .join("logs")
+                        .join("zeroclaw-daemon.ps1");
+                    if wrapper.exists() {
+                        fs::remove_file(&wrapper).ok();
+                    }
+                    println!("✅ Service uninstalled (user scope)");
+                    Ok(())
+                }
+                ServiceScope::System => windows::uninstall_system(),
+            }
         }
-        println!("✅ Service uninstalled");
-        return Ok(());
-    }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = (config, scope);
+            unreachable!()
+        }
+    } else {
+        anyhow::bail!("Service management is supported on macOS and Linux only")
+    };
 
-    anyhow::bail!("Service management is supported on macOS and Linux only")
+    if result.is_ok() && read_installed_scope(config) == Some(scope) {
+        clear_installed_scope(config);
+    }
+    result
 }
 
 fn uninstall_linux(config: &Config, init_system: InitSystem) -> Result<()> {
@@ -757,15 +920,33 @@ fn install_linux_systemd(config: &Config) -> Result<()> {
 
 /// Check if the current process is running as root (Unix only)
 #[cfg(unix)]
-fn is_root() -> bool {
+pub(crate) fn is_root() -> bool {
     // SAFETY: `getuid()` is a simple system call that returns the real user ID of the calling
     // process. It is always safe to call as it takes no arguments and returns a scalar value.
     // This is a well-established pattern in Rust for getting the current user ID.
     unsafe { libc::getuid() == 0 }
 }
 
-#[cfg(not(unix))]
-fn is_root() -> bool {
+#[cfg(target_os = "windows")]
+pub(crate) fn is_root() -> bool {
+    // Check for Administrator group (S-1-5-32-544) using powershell
+    let output = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            "([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] 'Administrator')",
+        ])
+        .output();
+
+    if let Ok(output) = output {
+        String::from_utf8_lossy(&output.stdout).trim() == "True"
+    } else {
+        false
+    }
+}
+
+#[cfg(not(any(unix, target_os = "windows")))]
+pub(crate) fn is_root() -> bool {
     false
 }
 
@@ -1288,7 +1469,7 @@ fn install_linux_openrc(config: &Config) -> Result<()> {
     Ok(())
 }
 
-fn install_windows(config: &Config) -> Result<()> {
+fn install_windows_user(config: &Config) -> Result<()> {
     let exe = std::env::current_exe().context("Failed to resolve current executable")?;
     let logs_dir = config
         .config_path
@@ -1297,13 +1478,21 @@ fn install_windows(config: &Config) -> Result<()> {
         .join("logs");
     fs::create_dir_all(&logs_dir)?;
 
-    // Create a wrapper script that redirects output to log files
-    let wrapper = logs_dir.join("zeroclaw-daemon.cmd");
+    // Create a PowerShell wrapper that runs the daemon without showing a console window
+    let wrapper = logs_dir.join("zeroclaw-daemon.ps1");
     let stdout_log = logs_dir.join("daemon.stdout.log");
     let stderr_log = logs_dir.join("daemon.stderr.log");
 
     let wrapper_content = format!(
-        "@echo off\r\n\"{}\" daemon >>\"{}\" 2>>\"{}\"",
+        r#"$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = "{}"
+$psi.Arguments = "daemon"
+$psi.UseShellExecute = $false
+$psi.CreateNoWindow = $true
+$psi.RedirectStandardOutput = "{}"
+$psi.RedirectStandardError = "{}"
+$proc = [System.Diagnostics.Process]::Start($psi)
+$proc.WaitForExit()"#,
         exe.display(),
         stdout_log.display(),
         stderr_log.display()
@@ -1324,9 +1513,7 @@ fn install_windows(config: &Config) -> Result<()> {
         "/SC",
         "ONLOGON",
         "/TR",
-        &format!("\"{}\"", wrapper.display()),
-        "/RL",
-        "HIGHEST",
+        &format!("powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"{}\"", wrapper.display()),
         "/F",
     ]))?;
 

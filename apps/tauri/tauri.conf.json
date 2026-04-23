@@ -25,11 +25,24 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "ZeroClaw Labs",
+    "category": "DeveloperTool",
+    "shortDescription": "ZeroClaw Desktop — system tray client for the ZeroClaw agent runtime",
+    "longDescription": "Tray-resident desktop client that pairs with a local ZeroClaw daemon via the gateway for chat, status, and memory access.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico"
+      },
+      "wix": {
+        "language": ["en-US"]
+      }
+    }
   }
 }

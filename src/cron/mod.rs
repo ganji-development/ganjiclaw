@@ -1,7 +1,7 @@
 pub use zeroclaw_runtime::cron::*;
 
 use crate::config::Config;
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 
 pub fn handle_command(command: crate::CronCommands, config: &Config) -> Result<()> {
     match command {
