@@ -149,17 +149,36 @@ const MODELS_BY_PROVIDER: Record<string, { value: string; label: string }[]> = {
 };
 
 export default function GeneralSection({ config, onUpdate }: Props) {
-  const provider = (config.default_provider as string) ?? 'openrouter';
+  // Real state lives under [providers]: `providers.fallback` names the active
+  // provider entry in `providers.models.<id>`, which holds model/temperature/timeout.
+  const providers = (config.providers as Record<string, unknown>) ?? {};
+  const providerModels = (providers.models as Record<string, Record<string, unknown>>) ?? {};
+  const provider = (providers.fallback as string) ?? '';
+  const active = (provider && providerModels[provider]) || {};
   const modelOptions = MODELS_BY_PROVIDER[provider];
-  const currentModel = (config.default_model as string) ?? '';
+  const currentModel = (active.model as string) ?? '';
 
-  // When provider changes, auto-select the first model for that provider
+  const providerSelectOptions = provider && !PROVIDER_OPTIONS.some((o) => o.value === provider)
+    ? [{ value: provider, label: provider }, ...PROVIDER_OPTIONS]
+    : PROVIDER_OPTIONS;
+
   const handleProviderChange = (v: string) => {
-    onUpdate('default_provider', v);
-    const models = MODELS_BY_PROVIDER[v];
-    if (models && models.length > 0) {
-      onUpdate('default_model', models[0]!.value);
+    if (!v) return;
+    onUpdate('providers.fallback', v);
+    // Ensure `providers.models.<v>` exists so subsequent field edits don't
+    // create partial nested objects.
+    if (!providerModels[v]) {
+      onUpdate(`providers.models.${v}`, {});
     }
+    const presetModels = MODELS_BY_PROVIDER[v];
+    if (presetModels && presetModels.length > 0) {
+      onUpdate(`providers.models.${v}.model`, presetModels[0]!.value);
+    }
+  };
+
+  const updateActive = (field: string, value: unknown) => {
+    if (!provider) return;
+    onUpdate(`providers.models.${provider}.${field}`, value);
   };
 
   return (
@@ -172,14 +191,14 @@ export default function GeneralSection({ config, onUpdate }: Props) {
         <Select
           value={provider}
           onChange={handleProviderChange}
-          options={PROVIDER_OPTIONS}
+          options={providerSelectOptions}
         />
       </FieldRow>
       <FieldRow label={t('config.field.default_model')} description={t('config.field.default_model.desc')}>
         {modelOptions ? (
           <Select
             value={modelOptions.some((o) => o.value === currentModel) ? currentModel : ''}
-            onChange={(v) => onUpdate('default_model', v)}
+            onChange={(v) => updateActive('model', v)}
             options={[
               ...(currentModel && !modelOptions.some((o) => o.value === currentModel)
                 ? [{ value: currentModel, label: currentModel }]
@@ -191,7 +210,7 @@ export default function GeneralSection({ config, onUpdate }: Props) {
           <input
             type="text"
             value={currentModel}
-            onChange={(e) => onUpdate('default_model', e.target.value)}
+            onChange={(e) => updateActive('model', e.target.value)}
             placeholder="model name"
             className="input-electric text-sm px-3 py-1.5 w-52 font-mono"
           />
@@ -199,8 +218,8 @@ export default function GeneralSection({ config, onUpdate }: Props) {
       </FieldRow>
       <FieldRow label={t('config.field.default_temperature')} description={t('config.field.default_temperature.desc')}>
         <Slider
-          value={(config.default_temperature as number) ?? 0.7}
-          onChange={(v) => onUpdate('default_temperature', v)}
+          value={(active.temperature as number) ?? 0.7}
+          onChange={(v) => updateActive('temperature', v)}
           min={0}
           max={2}
           step={0.1}
@@ -208,8 +227,8 @@ export default function GeneralSection({ config, onUpdate }: Props) {
       </FieldRow>
       <FieldRow label={t('config.field.provider_timeout_secs')} description={t('config.field.provider_timeout_secs.desc')}>
         <NumberInput
-          value={(config.provider_timeout_secs as number) ?? 120}
-          onChange={(v) => onUpdate('provider_timeout_secs', v)}
+          value={(active.timeout_secs as number) ?? 120}
+          onChange={(v) => updateActive('timeout_secs', v)}
           min={1}
         />
       </FieldRow>
