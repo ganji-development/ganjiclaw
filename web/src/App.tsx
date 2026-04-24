@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useEffect, type SyntheticEvent } from 'react';
+import { useState, useEffect, lazy, Suspense, type SyntheticEvent } from 'react';
 import { ThemeProvider } from './contexts/ThemeContext';
 import Layout from './components/layout/Layout';
 import Dashboard from './pages/Dashboard';
@@ -14,6 +14,7 @@ import Logs from './pages/Logs';
 import Doctor from './pages/Doctor';
 import Pairing from './pages/Pairing';
 import Canvas from './pages/Canvas';
+import Nodes from './pages/Nodes';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { DraftContext, useDraftStore } from './hooks/useDraft';
 import { setLocale, type Locale } from './lib/i18n';
@@ -22,6 +23,12 @@ import { basePath } from './lib/basePath';
 import { getAdminPairCode } from './lib/api';
 import { LocaleContext } from './contexts/LocaleContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { isTauri } from './lib/tauri';
+
+// Desktop-only pages (lazy loaded).
+const General = lazy(() => import('./pages/General'));
+const Permissions = lazy(() => import('./pages/Permissions'));
+const About = lazy(() => import('./pages/About'));
 
 // ---------------------------------------------------------------------------
 // Pairing dialog component
@@ -178,6 +185,14 @@ function AppContent() {
             <Route path="/doctor" element={<Doctor />} />
             <Route path="/pairing" element={<Pairing />} />
             <Route path="/canvas" element={<Canvas />} />
+            <Route path="/nodes" element={<Nodes />} />
+            {isTauri() && (
+              <>
+                <Route path="/general" element={<Suspense fallback={null}><General /></Suspense>} />
+                <Route path="/permissions" element={<Suspense fallback={null}><Permissions /></Suspense>} />
+                <Route path="/about" element={<Suspense fallback={null}><About /></Suspense>} />
+              </>
+            )}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

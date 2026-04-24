@@ -34,55 +34,63 @@ pub struct DeviceRegistry {
 impl DeviceRegistry {
     pub fn new(workspace_dir: &Path) -> Self {
         let db_path = workspace_dir.join("devices.db");
-        let conn = Connection::open(&db_path).expect("Failed to open device registry database");
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS devices (
-                token_hash TEXT PRIMARY KEY,
-                id TEXT NOT NULL,
-                name TEXT,
-                device_type TEXT,
-                paired_at TEXT NOT NULL,
-                last_seen TEXT NOT NULL,
-                ip_address TEXT
-            )",
-        )
-        .expect("Failed to create devices table");
-
-        // Warm the in-memory cache from DB
         let mut cache = HashMap::new();
-        let mut stmt = conn
-            .prepare("SELECT token_hash, id, name, device_type, paired_at, last_seen, ip_address FROM devices")
-            .expect("Failed to prepare device select");
-        let rows = stmt
-            .query_map([], |row| {
-                let token_hash: String = row.get(0)?;
-                let id: String = row.get(1)?;
-                let name: Option<String> = row.get(2)?;
-                let device_type: Option<String> = row.get(3)?;
-                let paired_at_str: String = row.get(4)?;
-                let last_seen_str: String = row.get(5)?;
-                let ip_address: Option<String> = row.get(6)?;
-                let paired_at = DateTime::parse_from_rfc3339(&paired_at_str)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_else(|_| Utc::now());
-                let last_seen = DateTime::parse_from_rfc3339(&last_seen_str)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_else(|_| Utc::now());
-                Ok((
-                    token_hash,
-                    DeviceInfo {
-                        id,
-                        name,
-                        device_type,
-                        paired_at,
-                        last_seen,
-                        ip_address,
-                    },
-                ))
-            })
-            .expect("Failed to query devices");
-        for (hash, info) in rows.flatten() {
-            cache.insert(hash, info);
+
+        match Connection::open(&db_path) {
+            Ok(conn) => {
+                conn.execute_batch("PRAGMA journal_mode=WAL;").ok();
+                if let Err(e) = conn.execute_batch(
+                    "CREATE TABLE IF NOT EXISTS devices (
+                        token_hash TEXT PRIMARY KEY,
+                        id TEXT NOT NULL,
+                        name TEXT,
+                        device_type TEXT,
+                        paired_at TEXT NOT NULL,
+                        last_seen TEXT NOT NULL,
+                        ip_address TEXT
+                    )",
+                ) {
+                    tracing::error!("Failed to create devices table: {e}");
+                }
+
+                if let Ok(mut stmt) = conn.prepare(
+                    "SELECT token_hash, id, name, device_type, paired_at, last_seen, ip_address FROM devices",
+                ) {
+                    if let Ok(rows) = stmt.query_map([], |row| {
+                        let token_hash: String = row.get(0)?;
+                        let id: String = row.get(1)?;
+                        let name: Option<String> = row.get(2)?;
+                        let device_type: Option<String> = row.get(3)?;
+                        let paired_at_str: String = row.get(4)?;
+                        let last_seen_str: String = row.get(5)?;
+                        let ip_address: Option<String> = row.get(6)?;
+                        let paired_at = DateTime::parse_from_rfc3339(&paired_at_str)
+                            .map(|dt| dt.with_timezone(&Utc))
+                            .unwrap_or_else(|_| Utc::now());
+                        let last_seen = DateTime::parse_from_rfc3339(&last_seen_str)
+                            .map(|dt| dt.with_timezone(&Utc))
+                            .unwrap_or_else(|_| Utc::now());
+                        Ok((
+                            token_hash,
+                            DeviceInfo {
+                                id,
+                                name,
+                                device_type,
+                                paired_at,
+                                last_seen,
+                                ip_address,
+                            },
+                        ))
+                    }) {
+                        for (hash, info) in rows.flatten() {
+                            cache.insert(hash, info);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to open device registry database: {e}");
+            }
         }
 
         Self {
@@ -91,62 +99,84 @@ impl DeviceRegistry {
         }
     }
 
-    fn open_db(&self) -> Connection {
-        Connection::open(&self.db_path).expect("Failed to open device registry database")
+    fn open_db(&self) -> Option<Connection> {
+        match Connection::open(&self.db_path) {
+            Ok(conn) => Some(conn),
+            Err(e) => {
+                tracing::error!("Failed to open device registry database: {e}");
+                None
+            }
+        }
     }
 
     pub fn register(&self, token_hash: String, info: DeviceInfo) {
-        let conn = self.open_db();
-        conn.execute(
-            "INSERT OR REPLACE INTO devices (token_hash, id, name, device_type, paired_at, last_seen, ip_address) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            rusqlite::params![
-                token_hash,
-                info.id,
-                info.name,
-                info.device_type,
-                info.paired_at.to_rfc3339(),
-                info.last_seen.to_rfc3339(),
-                info.ip_address,
-            ],
-        )
-        .expect("Failed to insert device");
+        if let Some(conn) = self.open_db() {
+            if let Err(e) = conn.execute(
+                "INSERT OR REPLACE INTO devices (token_hash, id, name, device_type, paired_at, last_seen, ip_address) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![
+                    token_hash,
+                    info.id,
+                    info.name,
+                    info.device_type,
+                    info.paired_at.to_rfc3339(),
+                    info.last_seen.to_rfc3339(),
+                    info.ip_address,
+                ],
+            ) {
+                tracing::error!("Failed to insert device: {e}");
+            }
+        }
         self.cache.lock().insert(token_hash, info);
     }
 
     pub fn list(&self) -> Vec<DeviceInfo> {
-        let conn = self.open_db();
-        let mut stmt = conn
+        let Some(conn) = self.open_db() else {
+            return self.cache.lock().values().cloned().collect();
+        };
+        let mut stmt = match conn
             .prepare("SELECT token_hash, id, name, device_type, paired_at, last_seen, ip_address FROM devices")
-            .expect("Failed to prepare device select");
-        let rows = stmt
-            .query_map([], |row| {
-                let id: String = row.get(1)?;
-                let name: Option<String> = row.get(2)?;
-                let device_type: Option<String> = row.get(3)?;
-                let paired_at_str: String = row.get(4)?;
-                let last_seen_str: String = row.get(5)?;
-                let ip_address: Option<String> = row.get(6)?;
-                let paired_at = DateTime::parse_from_rfc3339(&paired_at_str)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_else(|_| Utc::now());
-                let last_seen = DateTime::parse_from_rfc3339(&last_seen_str)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_else(|_| Utc::now());
-                Ok(DeviceInfo {
-                    id,
-                    name,
-                    device_type,
-                    paired_at,
-                    last_seen,
-                    ip_address,
-                })
+        {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!("Failed to prepare device select: {e}");
+                return self.cache.lock().values().cloned().collect();
+            }
+        };
+        let rows = match stmt.query_map([], |row| {
+            let id: String = row.get(1)?;
+            let name: Option<String> = row.get(2)?;
+            let device_type: Option<String> = row.get(3)?;
+            let paired_at_str: String = row.get(4)?;
+            let last_seen_str: String = row.get(5)?;
+            let ip_address: Option<String> = row.get(6)?;
+            let paired_at = DateTime::parse_from_rfc3339(&paired_at_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now());
+            let last_seen = DateTime::parse_from_rfc3339(&last_seen_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now());
+            Ok(DeviceInfo {
+                id,
+                name,
+                device_type,
+                paired_at,
+                last_seen,
+                ip_address,
             })
-            .expect("Failed to query devices");
+        }) {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!("Failed to query devices: {e}");
+                return self.cache.lock().values().cloned().collect();
+            }
+        };
         rows.filter_map(|r| r.ok()).collect()
     }
 
     pub fn revoke(&self, device_id: &str) -> bool {
-        let conn = self.open_db();
+        let Some(conn) = self.open_db() else {
+            return false;
+        };
         let deleted = conn
             .execute(
                 "DELETE FROM devices WHERE id = ?1",
@@ -170,12 +200,13 @@ impl DeviceRegistry {
 
     pub fn update_last_seen(&self, token_hash: &str) {
         let now = Utc::now();
-        let conn = self.open_db();
-        conn.execute(
-            "UPDATE devices SET last_seen = ?1 WHERE token_hash = ?2",
-            rusqlite::params![now.to_rfc3339(), token_hash],
-        )
-        .ok();
+        if let Some(conn) = self.open_db() {
+            conn.execute(
+                "UPDATE devices SET last_seen = ?1 WHERE token_hash = ?2",
+                rusqlite::params![now.to_rfc3339(), token_hash],
+            )
+            .ok();
+        }
         if let Some(device) = self.cache.lock().get_mut(token_hash) {
             device.last_seen = now;
         }
@@ -215,6 +246,24 @@ impl PairingStore {
         let mut pending = self.pending.lock();
         pending.retain(|p| p.expires_at > Utc::now());
         pending.len()
+    }
+}
+
+/// Auto-detect device type from User-Agent header when not provided explicitly.
+fn detect_device_type_from_ua(headers: &HeaderMap) -> Option<String> {
+    let ua = headers.get("user-agent")?.to_str().ok()?;
+    if ua.contains("Android") {
+        Some("android".into())
+    } else if ua.contains("iPhone") || ua.contains("iPad") {
+        Some("ios".into())
+    } else if ua.contains("Macintosh") || ua.contains("Mac OS") {
+        Some("macos".into())
+    } else if ua.contains("Windows") {
+        Some("windows".into())
+    } else if ua.contains("Linux") {
+        Some("linux".into())
+    } else {
+        None
     }
 }
 
@@ -266,7 +315,10 @@ pub async fn submit_pairing_enhanced(
 ) -> impl IntoResponse {
     let code = body["code"].as_str().unwrap_or("");
     let device_name = body["device_name"].as_str().map(String::from);
-    let device_type = body["device_type"].as_str().map(String::from);
+    let device_type = body["device_type"]
+        .as_str()
+        .map(String::from)
+        .or_else(|| detect_device_type_from_ua(&headers));
 
     let client_id = headers
         .get("X-Forwarded-For")

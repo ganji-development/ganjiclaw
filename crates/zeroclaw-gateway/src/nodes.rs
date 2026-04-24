@@ -22,10 +22,13 @@ use axum::{
     http::{HeaderMap, header},
     response::IntoResponse,
 };
+use chrono::{DateTime, Utc};
 use futures_util::{SinkExt, StreamExt};
 use parking_lot::RwLock;
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 
@@ -55,6 +58,7 @@ fn default_capability_parameters() -> serde_json::Value {
 #[derive(Debug, Clone)]
 pub struct NodeInfo {
     pub node_id: String,
+    pub device_type: Option<String>,
     pub capabilities: Vec<NodeCapability>,
     /// Channel to send invocation requests to the node's WebSocket handler.
     pub invoke_tx: mpsc::Sender<NodeInvocation>,
@@ -78,18 +82,39 @@ pub struct NodeInvocationResult {
 }
 
 /// Registry of all connected nodes and their capabilities.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct NodeRegistry {
     nodes: Arc<RwLock<HashMap<String, NodeInfo>>>,
     max_nodes: usize,
+    persistence: Option<Arc<NodePersistence>>,
+}
+
+impl Default for NodeRegistry {
+    fn default() -> Self {
+        Self {
+            nodes: Arc::new(RwLock::new(HashMap::new())),
+            max_nodes: 16,
+            persistence: None,
+        }
+    }
 }
 
 impl NodeRegistry {
-    /// Create a new registry with the given capacity limit.
+    /// Create a new registry with the given capacity limit (no persistence).
     pub fn new(max_nodes: usize) -> Self {
         Self {
             nodes: Arc::new(RwLock::new(HashMap::new())),
             max_nodes,
+            persistence: None,
+        }
+    }
+
+    /// Create a new registry with SQLite persistence.
+    pub fn new_with_persistence(max_nodes: usize, workspace_dir: &Path) -> Self {
+        Self {
+            nodes: Arc::new(RwLock::new(HashMap::new())),
+            max_nodes,
+            persistence: Some(Arc::new(NodePersistence::new(workspace_dir))),
         }
     }
 
@@ -99,13 +124,25 @@ impl NodeRegistry {
         if nodes.len() >= self.max_nodes && !nodes.contains_key(&info.node_id) {
             return false;
         }
+        // Persist metadata to SQLite if persistence is enabled.
+        if let Some(ref p) = self.persistence {
+            p.persist_node(
+                &info.node_id,
+                info.device_type.as_deref(),
+                &info.capabilities,
+                None,
+            );
+        }
         nodes.insert(info.node_id.clone(), info);
         true
     }
 
-    /// Remove a node from the registry.
+    /// Remove a node from the live registry (keeps persisted record for offline display).
     pub fn unregister(&self, node_id: &str) {
         self.nodes.write().remove(node_id);
+        if let Some(ref p) = self.persistence {
+            p.update_last_seen(node_id);
+        }
     }
 
     /// List all registered node IDs.
@@ -144,6 +181,226 @@ impl NodeRegistry {
     pub fn is_empty(&self) -> bool {
         self.nodes.read().is_empty()
     }
+
+    /// List all connected nodes with their capabilities (for REST API).
+    pub fn list_nodes(&self) -> Vec<NodeSummary> {
+        self.nodes
+            .read()
+            .values()
+            .map(|info| NodeSummary {
+                node_id: info.node_id.clone(),
+                capabilities: info.capabilities.clone(),
+            })
+            .collect()
+    }
+
+    /// List all nodes (online + persisted offline) with extended status info.
+    pub fn list_all_nodes(&self) -> Vec<NodeSummaryExtended> {
+        let live = self.nodes.read();
+        let mut result: Vec<NodeSummaryExtended> = live
+            .values()
+            .map(|info| NodeSummaryExtended {
+                node_id: info.node_id.clone(),
+                capabilities: info.capabilities.clone(),
+                device_type: info.device_type.clone(),
+                status: "online".into(),
+                last_seen: Utc::now().to_rfc3339(),
+            })
+            .collect();
+
+        // Merge persisted offline nodes.
+        if let Some(ref p) = self.persistence {
+            for persisted in p.list_persisted_nodes() {
+                if !live.contains_key(&persisted.node_id) {
+                    result.push(NodeSummaryExtended {
+                        node_id: persisted.node_id,
+                        capabilities: persisted.capabilities,
+                        device_type: persisted.device_type,
+                        status: "offline".into(),
+                        last_seen: persisted.last_seen.to_rfc3339(),
+                    });
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Access the persistence layer (for tests or direct queries).
+    pub fn persistence(&self) -> Option<&Arc<NodePersistence>> {
+        self.persistence.as_ref()
+    }
+}
+
+/// Summary of a connected node, returned by the REST API.
+#[derive(Debug, Serialize)]
+pub struct NodeSummary {
+    pub node_id: String,
+    pub capabilities: Vec<NodeCapability>,
+}
+
+/// Extended summary including persistence and status info.
+#[derive(Debug, Serialize, Clone)]
+pub struct NodeSummaryExtended {
+    pub node_id: String,
+    pub capabilities: Vec<NodeCapability>,
+    pub device_type: Option<String>,
+    pub status: String,
+    pub last_seen: String,
+}
+
+/// Persisted node metadata loaded from SQLite.
+#[derive(Debug, Clone)]
+pub struct PersistedNodeInfo {
+    pub node_id: String,
+    pub device_type: Option<String>,
+    pub capabilities: Vec<NodeCapability>,
+    pub last_seen: DateTime<Utc>,
+    pub registered_at: DateTime<Utc>,
+    pub linked_device_id: Option<String>,
+}
+
+/// SQLite-backed persistence layer for node metadata.
+#[derive(Debug)]
+pub struct NodePersistence {
+    db_path: PathBuf,
+}
+
+impl NodePersistence {
+    pub fn new(workspace_dir: &Path) -> Self {
+        let db_path = workspace_dir.join("devices.db");
+        if let Err(e) = Self::init_db(&db_path) {
+            tracing::error!("Failed to initialize node persistence database: {e}");
+        }
+        Self { db_path }
+    }
+
+    fn init_db(db_path: &Path) -> rusqlite::Result<()> {
+        let conn = Connection::open(db_path)?;
+        conn.execute_batch("PRAGMA journal_mode=WAL;")?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS nodes (
+                node_id TEXT PRIMARY KEY,
+                device_type TEXT,
+                capabilities_json TEXT NOT NULL,
+                last_seen TEXT NOT NULL,
+                registered_at TEXT NOT NULL,
+                linked_device_id TEXT
+            )",
+        )?;
+        Ok(())
+    }
+
+    fn open_db(&self) -> Option<Connection> {
+        match Connection::open(&self.db_path) {
+            Ok(conn) => Some(conn),
+            Err(e) => {
+                tracing::error!("Failed to open node persistence database: {e}");
+                None
+            }
+        }
+    }
+
+    pub fn persist_node(
+        &self,
+        node_id: &str,
+        device_type: Option<&str>,
+        capabilities: &[NodeCapability],
+        linked_device_id: Option<&str>,
+    ) {
+        let Some(conn) = self.open_db() else { return };
+        let caps_json = serde_json::to_string(capabilities).unwrap_or_else(|_| "[]".into());
+        let now = Utc::now().to_rfc3339();
+        if let Err(e) = conn.execute(
+            "INSERT INTO nodes (node_id, device_type, capabilities_json, last_seen, registered_at, linked_device_id)
+             VALUES (?1, ?2, ?3, ?4, ?4, ?5)
+             ON CONFLICT(node_id) DO UPDATE SET
+                device_type = COALESCE(?2, device_type),
+                capabilities_json = ?3,
+                last_seen = ?4,
+                linked_device_id = COALESCE(?5, linked_device_id)",
+            rusqlite::params![node_id, device_type, caps_json, now, linked_device_id],
+        ) {
+            tracing::error!("Failed to persist node {node_id}: {e}");
+        }
+    }
+
+    pub fn update_last_seen(&self, node_id: &str) {
+        let Some(conn) = self.open_db() else { return };
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "UPDATE nodes SET last_seen = ?1 WHERE node_id = ?2",
+            rusqlite::params![now, node_id],
+        )
+        .ok();
+    }
+
+    pub fn list_persisted_nodes(&self) -> Vec<PersistedNodeInfo> {
+        let Some(conn) = self.open_db() else {
+            return Vec::new();
+        };
+        let mut stmt = match conn
+            .prepare("SELECT node_id, device_type, capabilities_json, last_seen, registered_at, linked_device_id FROM nodes")
+        {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!("Failed to prepare node select: {e}");
+                return Vec::new();
+            }
+        };
+        let rows = match stmt.query_map([], |row| {
+            let node_id: String = row.get(0)?;
+            let device_type: Option<String> = row.get(1)?;
+            let caps_json: String = row.get(2)?;
+            let last_seen_str: String = row.get(3)?;
+            let registered_at_str: String = row.get(4)?;
+            let linked_device_id: Option<String> = row.get(5)?;
+
+            let capabilities: Vec<NodeCapability> =
+                serde_json::from_str(&caps_json).unwrap_or_default();
+            let last_seen = DateTime::parse_from_rfc3339(&last_seen_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now());
+            let registered_at = DateTime::parse_from_rfc3339(&registered_at_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now());
+
+            Ok(PersistedNodeInfo {
+                node_id,
+                device_type,
+                capabilities,
+                last_seen,
+                registered_at,
+                linked_device_id,
+            })
+        }) {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!("Failed to query persisted nodes: {e}");
+                return Vec::new();
+            }
+        };
+        rows.filter_map(|r| r.ok()).collect()
+    }
+
+    pub fn remove_node(&self, node_id: &str) -> bool {
+        let Some(conn) = self.open_db() else {
+            return false;
+        };
+        let deleted = conn
+            .execute(
+                "DELETE FROM nodes WHERE node_id = ?1",
+                rusqlite::params![node_id],
+            )
+            .unwrap_or(0);
+        deleted > 0
+    }
+}
+
+/// REST handler: `GET /api/nodes` — list all nodes (online + offline).
+pub async fn handle_list_nodes(State(state): State<AppState>) -> impl IntoResponse {
+    let nodes = state.node_registry.list_all_nodes();
+    axum::Json(serde_json::json!({ "nodes": nodes }))
 }
 
 /// Messages received from a node.
@@ -153,6 +410,8 @@ enum NodeMessage {
     Register {
         node_id: String,
         capabilities: Vec<NodeCapability>,
+        #[serde(default)]
+        device_type: Option<String>,
     },
     Result {
         call_id: String,
@@ -288,9 +547,17 @@ async fn handle_node_socket(socket: WebSocket, registry: Arc<NodeRegistry>) {
 
     let pending_clone = Arc::clone(&pending);
 
-    // Task to forward invocations to the node via WebSocket
+    // Task to forward invocations (and ack messages) to the node via WebSocket
     let send_task = tokio::spawn(async move {
         while let Some(invocation) = invoke_rx.recv().await {
+            if invocation.capability == "__registered__" {
+                if let serde_json::Value::String(ref json) = invocation.args {
+                    if sender.send(Message::Text(json.clone().into())).await.is_err() {
+                        break;
+                    }
+                }
+                continue;
+            }
             let msg = GatewayMessage::Invoke {
                 call_id: invocation.call_id.clone(),
                 capability: invocation.capability,
@@ -330,6 +597,7 @@ async fn handle_node_socket(socket: WebSocket, registry: Arc<NodeRegistry>) {
             NodeMessage::Register {
                 node_id,
                 capabilities,
+                device_type,
             } => {
                 // Validate node_id
                 if node_id.is_empty() || node_id.len() > 128 {
@@ -340,6 +608,7 @@ async fn handle_node_socket(socket: WebSocket, registry: Arc<NodeRegistry>) {
                 let caps_count = capabilities.len();
                 let info = NodeInfo {
                     node_id: node_id.clone(),
+                    device_type,
                     capabilities,
                     invoke_tx: invoke_tx.clone(),
                 };
@@ -348,12 +617,19 @@ async fn handle_node_socket(socket: WebSocket, registry: Arc<NodeRegistry>) {
                     tracing::info!("Node registered: {node_id} with {caps_count} capabilities");
                     registered_node_id = Some(node_id.clone());
 
-                    // Send ack — we can't use `sender` here since it's moved
-                    // into the send task. Instead, send ack via the invoke channel
-                    // pattern isn't ideal. We'll use a workaround: send the ack
-                    // through a special invocation that the send task converts to
-                    // a registered message. For simplicity, we just log and the
-                    // ack is implicit in the protocol.
+                    let ack = GatewayMessage::Registered {
+                        node_id: node_id.clone(),
+                        capabilities_count: caps_count,
+                    };
+                    if let Ok(json) = serde_json::to_string(&ack) {
+                        let ack_inv = NodeInvocation {
+                            call_id: "__ack__".into(),
+                            capability: "__registered__".into(),
+                            args: serde_json::Value::String(json),
+                            response_tx: tokio::sync::oneshot::channel().0,
+                        };
+                        let _ = invoke_tx.send(ack_inv).await;
+                    }
                 } else {
                     tracing::warn!(
                         "Node registration rejected: registry at capacity for {node_id}"
@@ -397,6 +673,7 @@ mod tests {
 
         let info = NodeInfo {
             node_id: "test-node".to_string(),
+            device_type: None,
             capabilities: vec![NodeCapability {
                 name: "ping".to_string(),
                 description: "Ping test".to_string(),
@@ -422,6 +699,7 @@ mod tests {
             let (tx, _rx) = mpsc::channel(1);
             let info = NodeInfo {
                 node_id: format!("node-{i}"),
+                device_type: None,
                 capabilities: vec![],
                 invoke_tx: tx,
             };
@@ -431,6 +709,7 @@ mod tests {
         let (tx, _rx) = mpsc::channel(1);
         let info = NodeInfo {
             node_id: "node-overflow".to_string(),
+            device_type: None,
             capabilities: vec![],
             invoke_tx: tx,
         };
@@ -446,6 +725,7 @@ mod tests {
 
         let info1 = NodeInfo {
             node_id: "node-1".to_string(),
+            device_type: None,
             capabilities: vec![NodeCapability {
                 name: "old".to_string(),
                 description: "Old cap".to_string(),
@@ -457,6 +737,7 @@ mod tests {
 
         let info2 = NodeInfo {
             node_id: "node-1".to_string(),
+            device_type: None,
             capabilities: vec![NodeCapability {
                 name: "new".to_string(),
                 description: "New cap".to_string(),
@@ -481,6 +762,7 @@ mod tests {
 
         registry.register(NodeInfo {
             node_id: "phone-1".to_string(),
+            device_type: None,
             capabilities: vec![
                 NodeCapability {
                     name: "camera.snap".to_string(),
@@ -498,6 +780,7 @@ mod tests {
 
         registry.register(NodeInfo {
             node_id: "sensor-1".to_string(),
+            device_type: None,
             capabilities: vec![NodeCapability {
                 name: "temp.read".to_string(),
                 description: "Read temperature".to_string(),
@@ -518,6 +801,7 @@ mod tests {
         let (tx, _rx) = mpsc::channel(1);
         registry.register(NodeInfo {
             node_id: "n".to_string(),
+            device_type: None,
             capabilities: vec![],
             invoke_tx: tx,
         });
@@ -542,10 +826,12 @@ mod tests {
             NodeMessage::Register {
                 node_id,
                 capabilities,
+                device_type,
             } => {
                 assert_eq!(node_id, "phone-1");
                 assert_eq!(capabilities.len(), 1);
                 assert_eq!(capabilities[0].name, "camera.snap");
+                assert!(device_type.is_none());
             }
             NodeMessage::Result { .. } => panic!("Expected Register message"),
         }
