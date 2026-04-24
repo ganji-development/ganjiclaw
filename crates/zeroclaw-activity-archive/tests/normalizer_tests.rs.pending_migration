@@ -1,7 +1,7 @@
 //! Tests for the normalizer.
 
-use crate::normalizer::Normalizer;
-use crate::schema::*;
+use zeroclaw_activity_archive::normalizer::Normalizer;
+use zeroclaw_activity_archive::schema::*;
 use parking_lot::Mutex;
 use rusqlite::Connection;
 use tempfile::NamedTempFile;

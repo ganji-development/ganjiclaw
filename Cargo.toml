@@ -231,6 +231,13 @@ mime_guess = { version = "2", optional = true }
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+# Windows-specific dependencies.
+# zeroclaw-activity-archive is folded into ZeroClawDaemon as a supervised
+# component when `config.activity_archive.enabled`; the dep lives here so
+# main.rs can inject the start closure into DaemonSubsystems.
+[target.'cfg(windows)'.dependencies]
+zeroclaw-activity-archive.workspace = true
+
 [features]
 default = [
     "agent-runtime",

@@ -1,4 +1,0 @@
-
-> zeroclaw-web@0.1.0 typecheck E:\Ganji-Development\ganjiclaw\web
-> tsc -p tsconfig.app.json --noEmit
-

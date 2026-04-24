@@ -269,3 +269,113 @@ impl Sessionizer {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::schema::{init_schema, Event, EventType};
+    use parking_lot::Mutex;
+    use std::sync::Arc;
+
+    fn setup_db() -> Arc<Mutex<Connection>> {
+        let conn = Connection::open_in_memory().unwrap();
+        init_schema(&conn).unwrap();
+        Arc::new(Mutex::new(conn))
+    }
+
+    fn insert_event(db: &Arc<Mutex<Connection>>, ts: DateTime<Utc>, app: &str, project: Option<&str>) {
+        let event = Event {
+            id: uuid::Uuid::new_v4().to_string(),
+            ts_utc: ts,
+            ts_local: chrono::Local::now(),
+            source: "window_focus".to_string(),
+            event_type: EventType::WindowFocus,
+            actor: None,
+            host: None,
+            app: Some(app.to_string()),
+            title: Some(format!("{} window", app)),
+            path: None,
+            details: serde_json::json!({}),
+            sensitivity: 0,
+            project_key: project.map(|s| s.to_string()),
+            session_id: None,
+            hash: None,
+            raw_ref: None,
+            created_at: Utc::now(),
+        };
+        let conn = db.lock();
+        conn.execute(
+            "INSERT INTO events (id, ts_utc, ts_local, source, event_type, app, title, details_json, sensitivity, project_key, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            rusqlite::params![
+                event.id, event.ts_utc.to_rfc3339(), event.ts_local.to_rfc3339(),
+                event.source, event.event_type.as_str(), event.app, event.title,
+                serde_json::to_string(&event.details).unwrap(), event.sensitivity,
+                event.project_key, event.created_at.to_rfc3339(),
+            ],
+        ).unwrap();
+    }
+
+    #[test]
+    fn test_single_session_continuous_activity() {
+        let db = setup_db();
+        let base = Utc::now();
+
+        // 5 events, 1 minute apart — should form one session
+        for i in 0..5 {
+            insert_event(&db, base + Duration::minutes(i), "Code.exe", Some("proj"));
+        }
+
+        let sessionizer = Sessionizer::new(db.clone(), 30, 15);
+        sessionizer.update_sessions().unwrap();
+
+        let conn = db.lock();
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 1, "continuous activity should produce one session");
+    }
+
+    #[test]
+    fn test_idle_timeout_creates_new_session() {
+        let db = setup_db();
+        let base = Utc::now();
+
+        // First burst of activity
+        for i in 0..3 {
+            insert_event(&db, base + Duration::minutes(i), "Code.exe", Some("proj"));
+        }
+        // Gap of 45 minutes (> 30 min idle threshold)
+        for i in 0..3 {
+            insert_event(&db, base + Duration::minutes(48 + i), "Code.exe", Some("proj"));
+        }
+
+        let sessionizer = Sessionizer::new(db.clone(), 30, 15);
+        sessionizer.update_sessions().unwrap();
+
+        let conn = db.lock();
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 2, "idle gap should split into two sessions");
+    }
+
+    #[test]
+    fn test_context_switch_creates_new_session() {
+        let db = setup_db();
+        let base = Utc::now();
+
+        // Working in Code.exe on project A
+        for i in 0..3 {
+            insert_event(&db, base + Duration::minutes(i), "Code.exe", Some("projA"));
+        }
+        // Switch to Chrome on different project after 20 min gap (> 15 min context switch)
+        for i in 0..3 {
+            insert_event(&db, base + Duration::minutes(23 + i), "Chrome.exe", Some("projB"));
+        }
+
+        let sessionizer = Sessionizer::new(db.clone(), 30, 15);
+        sessionizer.update_sessions().unwrap();
+
+        let conn = db.lock();
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 2, "context switch should create a new session");
+    }
+}
+

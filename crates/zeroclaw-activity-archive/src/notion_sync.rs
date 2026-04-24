@@ -187,23 +187,126 @@ impl NotionSync {
 
     /// Sync a daily log to Notion.
     async fn sync_daily_log_to_notion(&self, item: &NotionSyncItem) -> Result<Option<String>> {
-        // TODO: Implement Notion API call
-        // For now, return a mock page ID
-        Ok(Some(format!("page_{}", item.id)))
+        let date = item.payload.get("date").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let summary = item.payload.get("summary").and_then(|v| v.as_str()).unwrap_or("");
+        let metrics = &item.payload["metrics"];
+
+        let body = serde_json::json!({
+            "parent": { "database_id": self.daily_logs_database_id },
+            "properties": {
+                "Date": { "date": { "start": date } },
+                "Summary": { "title": [{ "text": { "content": &summary[..summary.len().min(2000)] } }] },
+                "Total Events": { "number": metrics.get("total_events").and_then(|v| v.as_f64()).unwrap_or(0.0) },
+            },
+            "children": [{
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [{ "text": { "content": summary } }]
+                }
+            }]
+        });
+
+        self.notion_api_create_page(body).await
     }
 
     /// Sync a session to Notion.
     async fn sync_session_to_notion(&self, item: &NotionSyncItem) -> Result<Option<String>> {
-        // TODO: Implement Notion API call
-        // For now, return a mock page ID
-        Ok(Some(format!("page_{}", item.id)))
+        let start = item.payload.get("start_time").and_then(|v| v.as_str()).unwrap_or("");
+        let end = item.payload.get("end_time").and_then(|v| v.as_str());
+        let label = item.payload.get("label").and_then(|v| v.as_str()).unwrap_or("unlabeled");
+        let project = item.payload.get("project_key").and_then(|v| v.as_str()).unwrap_or("");
+        let event_count = item.payload.get("event_count").and_then(|v| v.as_f64()).unwrap_or(0.0);
+
+        let body = serde_json::json!({
+            "parent": { "database_id": self.sessions_database_id },
+            "properties": {
+                "Label": { "title": [{ "text": { "content": label } }] },
+                "Start": { "date": { "start": start, "end": end } },
+                "Project": { "rich_text": [{ "text": { "content": project } }] },
+                "Events": { "number": event_count },
+            }
+        });
+
+        self.notion_api_create_page(body).await
     }
 
     /// Sync a project to Notion.
     async fn sync_project_to_notion(&self, item: &NotionSyncItem) -> Result<Option<String>> {
-        // TODO: Implement Notion API call
-        // For now, return a mock page ID
-        Ok(Some(format!("page_{}", item.id)))
+        let name = item.payload.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+        let summary = item.payload.get("summary").and_then(|v| v.as_str()).unwrap_or("");
+        let last_activity = item.payload.get("last_activity").and_then(|v| v.as_str()).unwrap_or("");
+
+        let body = serde_json::json!({
+            "parent": { "database_id": self.projects_database_id },
+            "properties": {
+                "Name": { "title": [{ "text": { "content": name } }] },
+                "Summary": { "rich_text": [{ "text": { "content": &summary[..summary.len().min(2000)] } }] },
+                "Last Activity": { "date": { "start": last_activity } },
+            }
+        });
+
+        self.notion_api_create_page(body).await
+    }
+
+    /// Create a page via the Notion API with retry and rate limiting.
+    async fn notion_api_create_page(&self, body: serde_json::Value) -> Result<Option<String>> {
+        const NOTION_API_URL: &str = "https://api.notion.com/v1/pages";
+        const MAX_RETRIES: u32 = 3;
+
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()?;
+
+        for attempt in 0..=MAX_RETRIES {
+            let response = client
+                .post(NOTION_API_URL)
+                .header("Authorization", format!("Bearer {}", self.api_key))
+                .header("Notion-Version", "2022-06-28")
+                .header("Content-Type", "application/json")
+                .json(&body)
+                .send()
+                .await;
+
+            match response {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if status.is_success() {
+                        let json: serde_json::Value = resp.json().await?;
+                        let page_id = json.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                        // Rate limit: ~3 req/s
+                        tokio::time::sleep(Duration::from_millis(334)).await;
+                        return Ok(page_id);
+                    }
+
+                    if status.as_u16() == 429 || status.is_server_error() {
+                        if attempt < MAX_RETRIES {
+                            let backoff = Duration::from_secs(2u64.pow(attempt));
+                            tracing::warn!(
+                                "Notion API returned {}, retrying in {:?} (attempt {}/{})",
+                                status, backoff, attempt + 1, MAX_RETRIES
+                            );
+                            tokio::time::sleep(backoff).await;
+                            continue;
+                        }
+                    }
+
+                    let body_text = resp.text().await.unwrap_or_default();
+                    anyhow::bail!("Notion API error {status}: {body_text}");
+                }
+                Err(e) => {
+                    if attempt < MAX_RETRIES {
+                        let backoff = Duration::from_secs(2u64.pow(attempt));
+                        tracing::warn!("Notion request failed: {e}, retrying in {:?}", backoff);
+                        tokio::time::sleep(backoff).await;
+                        continue;
+                    }
+                    anyhow::bail!("Notion request failed after {MAX_RETRIES} retries: {e}");
+                }
+            }
+        }
+
+        anyhow::bail!("Notion sync exhausted all retries")
     }
 
     /// Store a sync item in the database.

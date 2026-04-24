@@ -3636,6 +3636,14 @@ async fn run_message_dispatch_loop(
     let task_sequence = Arc::new(AtomicU64::new(1));
 
     while let Some(msg) = rx.recv().await {
+        // Multi-room channels encode `name:qualifier` (e.g. Matrix `"matrix:!roomId"`).
+        // Attribute metrics to the base channel so counts aggregate per integration.
+        let metrics_key = msg
+            .channel
+            .split_once(':')
+            .map_or(msg.channel.as_str(), |(base, _)| base);
+        zeroclaw_runtime::channel_metrics::record_inbound(metrics_key);
+
         // Fast path: /stop cancels the in-flight task for this sender scope without
         // spawning a worker or registering a new task. Handled here — before semaphore
         // acquisition — so the target task is still in the store and is never replaced.
@@ -5418,6 +5426,12 @@ pub async fn start_channels(config: Config) -> Result<()> {
             .map(|ch| (ch.name().to_string(), Arc::clone(ch)))
             .collect::<HashMap<_, _>>(),
     );
+
+    // Pre-register running channels so the `/api/channels` dashboard endpoint
+    // lists them with zero counts before the first message arrives.
+    for ch in &channels {
+        zeroclaw_runtime::channel_metrics::register(ch.name(), ch.name());
+    }
 
     // Populate the reaction tool's channel map now that channels are initialized.
     if let Some(ref handle) = reaction_handle_ch {

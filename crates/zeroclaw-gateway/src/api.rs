@@ -133,6 +133,61 @@ pub async fn handle_api_status(
     Json(body).into_response()
 }
 
+/// GET /api/channels — per-channel detail for the dashboard Channels tab
+pub async fn handle_api_channels(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(e) = require_auth(&state, &headers) {
+        return e.into_response();
+    }
+
+    let config = state.config.lock().clone();
+    let health = zeroclaw_runtime::health::snapshot();
+    let metrics = zeroclaw_runtime::channel_metrics::snapshot();
+
+    let mut entries = Vec::with_capacity(metrics.len());
+    for (name, m) in &metrics {
+        let component_key = format!("channel:{name}");
+        let (status, health_state) = match health.components.get(&component_key) {
+            Some(c) => match c.status.as_str() {
+                "ok" => ("active", "healthy"),
+                "error" => ("error", "down"),
+                _ => ("inactive", "degraded"),
+            },
+            // Registered via metrics but health hasn't heartbeated yet.
+            None => ("inactive", "degraded"),
+        };
+
+        entries.push(serde_json::json!({
+            "name": name,
+            "type": m.channel_type,
+            "enabled": true,
+            "status": status,
+            "message_count": m.message_count,
+            "last_message_at": m.last_message_at,
+            "health": health_state,
+        }));
+    }
+
+    // Surface the webhook channel when configured — it is served by the
+    // gateway itself, not the channel orchestrator, so it never registers
+    // inbound metrics. Report it as healthy whenever configured.
+    if config.channels.webhook.is_some() && !metrics.contains_key("webhook") {
+        entries.push(serde_json::json!({
+            "name": "webhook",
+            "type": "webhook",
+            "enabled": true,
+            "status": "active",
+            "message_count": 0,
+            "last_message_at": serde_json::Value::Null,
+            "health": "healthy",
+        }));
+    }
+
+    Json(serde_json::json!({ "channels": entries })).into_response()
+}
+
 /// GET /api/config — current config (api_key masked)
 pub async fn handle_api_config_get(
     State(state): State<AppState>,

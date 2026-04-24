@@ -136,8 +136,36 @@ impl PrivacyManager {
     }
 
     /// Get default privacy rules.
+    ///
+    /// These cover common sensitive contexts:
+    /// - Password manager windows
+    /// - SSH/GPG key paths
+    /// - Environment files with secrets
+    /// - Incognito/private browsing
+    /// - Banking and financial domains
     pub fn default_rules() -> Vec<PrivacyRule> {
         vec![
+            // Path exclusions — files that routinely contain secrets
+            PrivacyRule::new(
+                PrivacyRuleType::ExcludePath,
+                "**/.ssh/**".to_string(),
+                PrivacyAction::Exclude,
+            ),
+            PrivacyRule::new(
+                PrivacyRuleType::ExcludePath,
+                "**/.gnupg/**".to_string(),
+                PrivacyAction::Exclude,
+            ),
+            PrivacyRule::new(
+                PrivacyRuleType::ExcludePath,
+                "**/.env".to_string(),
+                PrivacyAction::Exclude,
+            ),
+            PrivacyRule::new(
+                PrivacyRuleType::ExcludePath,
+                "**/.env.*".to_string(),
+                PrivacyAction::Exclude,
+            ),
             PrivacyRule::new(
                 PrivacyRuleType::ExcludePath,
                 "**/passwords/**".to_string(),
@@ -148,14 +176,71 @@ impl PrivacyManager {
                 "**/banking/**".to_string(),
                 PrivacyAction::Exclude,
             ),
+            // Title exclusions — password managers and sensitive windows
             PrivacyRule::new(
                 PrivacyRuleType::ExcludeTitle,
                 "*password*".to_string(),
                 PrivacyAction::Exclude,
             ),
             PrivacyRule::new(
+                PrivacyRuleType::ExcludeTitle,
+                "*1Password*".to_string(),
+                PrivacyAction::Exclude,
+            ),
+            PrivacyRule::new(
+                PrivacyRuleType::ExcludeTitle,
+                "*KeePass*".to_string(),
+                PrivacyAction::Exclude,
+            ),
+            PrivacyRule::new(
+                PrivacyRuleType::ExcludeTitle,
+                "*Bitwarden*".to_string(),
+                PrivacyAction::Exclude,
+            ),
+            PrivacyRule::new(
+                PrivacyRuleType::ExcludeTitle,
+                "*LastPass*".to_string(),
+                PrivacyAction::Exclude,
+            ),
+            PrivacyRule::new(
+                PrivacyRuleType::ExcludeTitle,
+                "*InPrivate*".to_string(),
+                PrivacyAction::Exclude,
+            ),
+            PrivacyRule::new(
+                PrivacyRuleType::ExcludeTitle,
+                "*Incognito*".to_string(),
+                PrivacyAction::Exclude,
+            ),
+            PrivacyRule::new(
+                PrivacyRuleType::ExcludeTitle,
+                "*Private Browsing*".to_string(),
+                PrivacyAction::Exclude,
+            ),
+            // Domain exclusions — banking and financial sites
+            PrivacyRule::new(
                 PrivacyRuleType::ExcludeDomain,
                 "*.bank.com".to_string(),
+                PrivacyAction::Exclude,
+            ),
+            PrivacyRule::new(
+                PrivacyRuleType::ExcludeDomain,
+                "*.bankofamerica.com".to_string(),
+                PrivacyAction::Exclude,
+            ),
+            PrivacyRule::new(
+                PrivacyRuleType::ExcludeDomain,
+                "*.chase.com".to_string(),
+                PrivacyAction::Exclude,
+            ),
+            PrivacyRule::new(
+                PrivacyRuleType::ExcludeDomain,
+                "*.paypal.com".to_string(),
+                PrivacyAction::Exclude,
+            ),
+            PrivacyRule::new(
+                PrivacyRuleType::ExcludeDomain,
+                "*.venmo.com".to_string(),
                 PrivacyAction::Exclude,
             ),
         ]

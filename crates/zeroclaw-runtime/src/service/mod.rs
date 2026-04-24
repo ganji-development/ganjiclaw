@@ -9,7 +9,7 @@ use zeroclaw_config::schema::Config;
 pub mod windows;
 
 #[cfg(target_os = "windows")]
-pub use windows::run_as_service;
+pub use windows::{run_as_service, update_config_dir};
 
 const SERVICE_LABEL: &str = "com.zeroclaw.daemon";
 const WINDOWS_TASK_NAME: &str = "ZeroClaw Daemon";
@@ -210,7 +210,14 @@ pub fn install(config: &Config, init_system: InitSystem, scope: ServiceScope) ->
         {
             match scope {
                 ServiceScope::User => install_windows_user(config),
-                ServiceScope::System => windows::install_system(),
+                ServiceScope::System => {
+                    let config_dir = config
+                        .config_path
+                        .parent()
+                        .map(Path::to_path_buf)
+                        .unwrap_or_else(|| PathBuf::from("."));
+                    windows::install_system(&config_dir)
+                }
             }
         }
         #[cfg(not(target_os = "windows"))]

@@ -3047,6 +3047,11 @@ pub struct CollectorConfig {
     /// Poll interval for collectors in seconds. Default: 2.
     #[serde(default = "default_collector_poll_interval")]
     pub poll_interval_seconds: u64,
+
+    /// Seconds of inactivity before the window-focus collector emits a
+    /// `user_idle` transition event. Default: 120.
+    #[serde(default = "default_idle_threshold_seconds")]
+    pub idle_threshold_seconds: u64,
 }
 
 /// Sessionizer configuration.
@@ -3145,6 +3150,10 @@ fn default_collector_poll_interval() -> u64 {
     2
 }
 
+fn default_idle_threshold_seconds() -> u64 {
+    120
+}
+
 fn default_idle_timeout_minutes() -> u64 {
     30
 }
@@ -3181,6 +3190,7 @@ impl Default for CollectorConfig {
             file_activity: false,
             file_activity_folders: Vec::new(),
             poll_interval_seconds: default_collector_poll_interval(),
+            idle_threshold_seconds: default_idle_threshold_seconds(),
         }
     }
 }
@@ -12146,6 +12156,7 @@ auto_save = true
             opencode_cli: OpenCodeCliConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
+            activity_archive: ActivityArchiveConfig::default(),
         };
         // Provider fields are now resolved directly — no cache needed.
 
@@ -12715,6 +12726,7 @@ default_temperature = 0.7
             opencode_cli: OpenCodeCliConfig::default(),
             sop: SopConfig::default(),
             shell_tool: ShellToolConfig::default(),
+            activity_archive: ActivityArchiveConfig::default(),
         };
 
         // Provider fields are now resolved directly — no cache needed.

@@ -396,3 +396,102 @@ impl Normalizer {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::schema::{init_schema, PrivacyRule, PrivacyRuleType, PrivacyAction};
+    use parking_lot::Mutex;
+    use std::sync::Arc;
+
+    fn setup_normalizer() -> Normalizer {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        init_schema(&conn).unwrap();
+        let db = Arc::new(Mutex::new(conn));
+        Normalizer::new(db)
+    }
+
+    fn make_window_focus_raw_event() -> RawEvent {
+        RawEvent::new(
+            "window_focus".to_string(),
+            serde_json::json!({
+                "window_title": "main.rs - MyProject - Visual Studio Code",
+                "process_name": "Code.exe",
+                "process_id": 1234,
+                "path": "C:\\dev\\MyProject\\src\\main.rs",
+            }),
+        )
+    }
+
+    #[test]
+    fn test_process_raw_event_positive() {
+        let normalizer = setup_normalizer();
+        let raw = make_window_focus_raw_event();
+
+        let result = normalizer.process_raw_event(&raw).unwrap();
+        assert!(result.is_some(), "should produce a normalized event");
+
+        let event = result.unwrap();
+        assert_eq!(event.event_type, EventType::WindowFocus);
+        assert_eq!(event.app.as_deref(), Some("Code.exe"));
+        assert_eq!(
+            event.title.as_deref(),
+            Some("main.rs - MyProject - Visual Studio Code")
+        );
+        assert!(event.hash.is_some());
+        assert!(event.raw_ref.is_some());
+    }
+
+    #[test]
+    fn test_process_raw_event_privacy_filtered() {
+        let normalizer = setup_normalizer();
+
+        // Add a title exclusion rule
+        {
+            let conn = normalizer.db.lock();
+            let rule = PrivacyRule::new(
+                PrivacyRuleType::ExcludeTitle,
+                "*password*".to_string(),
+                PrivacyAction::Exclude,
+            );
+            conn.execute(
+                "INSERT INTO privacy_rules (id, rule_type, pattern, action, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![rule.id, rule.rule_type.as_str(), rule.pattern, rule.action.as_str(), rule.created_at.to_rfc3339()],
+            ).unwrap();
+        }
+        normalizer.load_privacy_rules().unwrap();
+
+        let raw = RawEvent::new(
+            "window_focus".to_string(),
+            serde_json::json!({
+                "window_title": "Edit password - KeePass",
+                "process_name": "KeePass.exe",
+            }),
+        );
+
+        let result = normalizer.process_raw_event(&raw).unwrap();
+        assert!(result.is_none(), "password-related event should be excluded");
+    }
+
+    #[test]
+    fn test_extract_domain_from_url() {
+        let normalizer = setup_normalizer();
+        assert_eq!(
+            normalizer.extract_domain_from_url("https://github.com/user/repo"),
+            Some("github.com".to_string())
+        );
+        assert_eq!(
+            normalizer.extract_domain_from_url("not a url"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_matches_pattern_glob() {
+        let normalizer = setup_normalizer();
+        assert!(normalizer.matches_pattern("hello world", "*world"));
+        assert!(normalizer.matches_pattern("test.exe", "*.exe"));
+        assert!(!normalizer.matches_pattern("test.txt", "*.exe"));
+    }
+}
+

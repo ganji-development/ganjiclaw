@@ -1,0 +1,637 @@
+2026-04-23T19:18:48.059247Z  INFO zeroclaw_config::schema: Config loaded path=E:\zeroclaw\.zeroclaw\config.toml workspace=E:\zeroclaw\.zeroclaw\workspace source="active_workspace.toml" initialized=true
+Core:configlist.txt
+  schema-version                                = 2                    (u32)
+  locale                                        = <unset>              (Option<String>)
+
+Providers:
+  providers.fallback                            = ollama               (Option<String>)
+
+Observability:
+  observability.backend                         = none                 (String)
+  observability.otel-endpoint                   = <unset>              (Option<String>)
+  observability.otel-service-name               = <unset>              (Option<String>)
+  observability.runtime-trace-mode              = none                 (String)
+  observability.runtime-trace-path              = state/runtime-trace.jsonl (String)
+  observability.runtime-trace-max-entries       = 200                  (usize)
+
+Autonomy:
+  autonomy.level                                = supervised           (AutonomyLevel)
+  autonomy.workspace-only                       = true                 (bool)
+  autonomy.allowed-commands                     = ["git", "pnpm", "cargo", "echo", "python", "python3", "pip", "node", "dir", "type", "findstr", "where", "powershell"] (Vec<String>)
+  autonomy.forbidden-paths                      = ['C:\Windows', 'C:\Program Files', 'C:\Program Files (x86)', 'C:\ProgramData', 'C:\Recovery', 'C:\System Volume Information', "~/.ssh", "~/.gnupg", "~/.aws"] (Vec<String>)
+  autonomy.max-actions-per-hour                 = 20                   (u32)
+  autonomy.max-cost-per-day-cents               = 500                  (u32)
+  autonomy.require-approval-for-medium-risk     = true                 (bool)
+  autonomy.block-high-risk-commands             = true                 (bool)
+  autonomy.shell-env-passthrough                = []                   (Vec<String>)
+  autonomy.auto-approve                         = ["file_read", "memory_recall", "web_search_tool", "web_fetch", "calculator", "glob_search", "content_search", "image_info", "weather", "browser", "browser_open"] (Vec<String>)
+  autonomy.always-ask                           = []                   (Vec<String>)
+  autonomy.allowed-roots                        = []                   (Vec<String>)
+  autonomy.non-cli-excluded-tools               = []                   (Vec<String>)
+  autonomy.shell-timeout-secs                   = 60                   (u64)
+
+Trust:
+  trust.initial-score                           = 0.8                  (f64)
+  trust.decay-half-life-days                    = 30.0                 (f64)
+  trust.regression-threshold                    = 0.5                  (f64)
+  trust.correction-penalty                      = 0.05                 (f64)
+  trust.success-boost                           = 0.01                 (f64)
+
+Security:
+  security.sandbox.enabled                      = <unset>              (Option<bool>)
+  security.sandbox.backend                      = auto                 (SandboxBackend)
+  security.sandbox.firejail-args                = []                   (Vec<String>)
+  security.resources.max-memory-mb              = 512                  (u32)
+  security.resources.max-cpu-time-seconds       = 60                   (u64)
+  security.resources.max-subprocesses           = 10                   (u32)
+  security.resources.memory-monitoring          = true                 (bool)
+  security.audit.enabled                        = true                 (bool)
+  security.audit.log-path                       = audit.log            (String)
+  security.audit.max-size-mb                    = 100                  (u32)
+  security.audit.sign-events                    = false                (bool)
+  security.otp.enabled                          = false                (bool)
+  security.otp.method                           = totp                 (OtpMethod)
+  security.otp.token-ttl-secs                   = 30                   (u64)
+  security.otp.cache-valid-secs                 = 300                  (u64)
+  security.otp.gated-actions                    = ["shell", "file_write", "browser_open", "browser", "memory_forget"] (Vec<String>)
+  security.otp.gated-domains                    = []                   (Vec<String>)
+  security.otp.gated-domain-categories          = []                   (Vec<String>)
+  security.otp.challenge-max-attempts           = 3                    (u32)
+  security.estop.enabled                        = false                (bool)
+  security.estop.state-file                     = ~/.zeroclaw/estop-state.json (String)
+  security.estop.require-otp-to-resume          = true                 (bool)
+  security.nevis.enabled                        = false                (bool)
+  security.nevis.instance-url                   =                      (String)
+  security.nevis.realm                          = master               (String)
+  security.nevis.client-id                      =                      (String)
+  security.nevis.client-secret                  = <unset>              (Option<String>) ≡ƒöÆ
+  security.nevis.token-validation               = local                (String)
+  security.nevis.jwks-url                       = <unset>              (Option<String>)
+  security.nevis.require-mfa                    = false                (bool)
+  security.nevis.session-timeout-secs           = 3600                 (u64)
+  security.webauthn.enabled                     = false                (bool)
+  security.webauthn.rp-id                       = localhost            (String)
+  security.webauthn.rp-origin                   = http://localhost:42617 (String)
+  security.webauthn.rp-name                     = ZeroClaw             (String)
+
+Backup:
+  backup.enabled                                = true                 (bool)
+  backup.max-keep                               = 10                   (usize)
+  backup.include-dirs                           = ["config", "memory", "audit", "knowledge"] (Vec<String>)
+  backup.destination-dir                        = state/backups        (String)
+  backup.schedule-cron                          = <unset>              (Option<String>)
+  backup.schedule-timezone                      = <unset>              (Option<String>)
+  backup.compress                               = true                 (bool)
+  backup.encrypt                                = false                (bool)
+
+Data-retention:
+  data-retention.enabled                        = false                (bool)
+  data-retention.retention-days                 = 90                   (u64)
+  data-retention.dry-run                        = false                (bool)
+  data-retention.categories                     = []                   (Vec<String>)
+
+Cloud-ops:
+  cloud-ops.enabled                             = false                (bool)
+  cloud-ops.default-cloud                       = aws                  (String)
+  cloud-ops.supported-clouds                    = ["aws", "azure", "gcp"] (Vec<String>)
+  cloud-ops.iac-tools                           = ["terraform"]        (Vec<String>)
+  cloud-ops.cost-threshold-monthly-usd          = 100.0                (f64)
+  cloud-ops.well-architected-frameworks         = ["aws-waf"]          (Vec<String>)
+
+Conversational-ai:
+  conversational-ai.enabled                     = false                (bool)
+  conversational-ai.default-language            = en                   (String)
+  conversational-ai.supported-languages         = ["en", "de", "fr", "it"] (Vec<String>)
+  conversational-ai.auto-detect-language        = true                 (bool)
+  conversational-ai.escalation-confidence-threshold = 0.3                  (f64)
+  conversational-ai.max-conversation-turns      = 50                   (usize)
+  conversational-ai.conversation-timeout-secs   = 1800                 (u64)
+  conversational-ai.analytics-enabled           = false                (bool)
+  conversational-ai.knowledge-base-tool         = <unset>              (Option<String>)
+
+Security-ops:
+  security-ops.enabled                          = false                (bool)
+  security-ops.playbooks-dir                    = ~/.zeroclaw/playbooks (String)
+  security-ops.auto-triage                      = false                (bool)
+  security-ops.require-approval-for-actions     = true                 (bool)
+  security-ops.max-auto-severity                = low                  (String)
+  security-ops.report-output-dir                = ~/.zeroclaw/security-reports (String)
+  security-ops.siem-integration                 = <unset>              (Option<String>)
+
+Runtime:
+  runtime.kind                                  = native               (String)
+  runtime.reasoning-enabled                     = <unset>              (Option<bool>)
+  runtime.reasoning-effort                      = <unset>              (Option<String>)
+  runtime.docker.image                          = alpine:3.20          (String)
+  runtime.docker.network                        = none                 (String)
+  runtime.docker.memory-limit-mb                = 512                  (Option<u64>)
+  runtime.docker.cpu-limit                      = 1.0                  (Option<f64>)
+  runtime.docker.read-only-rootfs               = true                 (bool)
+  runtime.docker.mount-workspace                = true                 (bool)
+  runtime.docker.allowed-workspace-roots        = []                   (Vec<String>)
+
+Reliability:
+  reliability.provider-retries                  = 2                    (u32)
+  reliability.provider-backoff-ms               = 500                  (u64)
+  reliability.fallback-providers                = []                   (Vec<String>)
+  reliability.api-keys                          = []                   (Vec<String>)
+  reliability.channel-initial-backoff-secs      = 2                    (u64)
+  reliability.channel-max-backoff-secs          = 60                   (u64)
+  reliability.scheduler-poll-secs               = 15                   (u64)
+  reliability.scheduler-retries                 = 2                    (u32)
+
+Scheduler:
+  scheduler.enabled                             = true                 (bool)
+  scheduler.max-tasks                           = 64                   (usize)
+  scheduler.max-concurrent                      = 4                    (usize)
+
+Agent:
+  agent.compact-context                         = true                 (bool)
+  agent.max-tool-iterations                     = 10                   (usize)
+  agent.max-history-messages                    = 50                   (usize)
+  agent.max-context-tokens                      = 32000                (usize)
+  agent.parallel-tools                          = false                (bool)
+  agent.tool-dispatcher                         = auto                 (String)
+  agent.tool-call-dedup-exempt                  = []                   (Vec<String>)
+  agent.max-system-prompt-chars                 = 0                    (usize)
+  agent.context-aware-tools                     = false                (bool)
+  agent.max-tool-result-chars                   = 50000                (usize)
+  agent.keep-tool-context-turns                 = 2                    (usize)
+  agent.thinking.default-level                  = medium               (ThinkingLevel)
+  agent.history-pruning.enabled                 = false                (bool)
+  agent.history-pruning.max-tokens              = 8192                 (usize)
+  agent.history-pruning.keep-recent             = 4                    (usize)
+  agent.history-pruning.collapse-tool-results   = true                 (bool)
+  agent.eval.enabled                            = false                (bool)
+  agent.eval.min-quality-score                  = 0.5                  (f64)
+  agent.eval.max-retries                        = 1                    (u32)
+  agent.context-compression.enabled             = true                 (bool)
+  agent.context-compression.threshold-ratio     = 0.5                  (f64)
+  agent.context-compression.protect-first-n     = 3                    (usize)
+  agent.context-compression.protect-last-n      = 4                    (usize)
+  agent.context-compression.max-passes          = 3                    (u32)
+  agent.context-compression.summary-max-chars   = 4000                 (usize)
+  agent.context-compression.source-max-chars    = 50000                (usize)
+  agent.context-compression.timeout-secs        = 60                   (u64)
+  agent.context-compression.summary-model       = <unset>              (Option<String>)
+  agent.context-compression.identifier-policy   = strict               (String)
+  agent.context-compression.tool-result-retrim-chars = 2000                 (usize)
+  agent.context-compression.tool-result-trim-exempt = []                   (Vec<String>)
+
+Pacing:
+  pacing.step-timeout-secs                      = <unset>              (Option<u64>)
+  pacing.loop-detection-min-elapsed-secs        = <unset>              (Option<u64>)
+  pacing.loop-ignore-tools                      = []                   (Vec<String>)
+  pacing.message-timeout-scale-max              = <unset>              (Option<u64>)
+  pacing.loop-detection-enabled                 = true                 (bool)
+  pacing.loop-detection-window-size             = 20                   (usize)
+  pacing.loop-detection-max-repeats             = 3                    (usize)
+
+Skills:
+  skills.open-skills-enabled                    = false                (bool)
+  skills.open-skills-dir                        = <unset>              (Option<String>)
+  skills.allow-scripts                          = false                (bool)
+  skills.prompt-injection-mode                  = full                 (SkillsPromptInjectionMode)
+  skills.skill-creation.enabled                 = false                (bool)
+  skills.skill-creation.max-skills              = 500                  (usize)
+  skills.skill-creation.similarity-threshold    = 0.85                 (f64)
+  skills.skill-improvement.enabled              = true                 (bool)
+  skills.skill-improvement.cooldown-secs        = 3600                 (u64)
+
+Pipeline:
+  pipeline.enabled                              = false                (bool)
+  pipeline.max-steps                            = 20                   (usize)
+  pipeline.allowed-tools                        = []                   (Vec<String>)
+
+Query-classification:
+  query-classification.enabled                  = false                (bool)
+
+Heartbeat:
+  heartbeat.enabled                             = true                 (bool)
+  heartbeat.interval-minutes                    = 30                   (u32)
+  heartbeat.two-phase                           = true                 (bool)
+  heartbeat.message                             = <unset>              (Option<String>)
+  heartbeat.target                              = <unset>              (Option<String>)
+  heartbeat.to                                  = <unset>              (Option<String>)
+  heartbeat.adaptive                            = false                (bool)
+  heartbeat.min-interval-minutes                = 5                    (u32)
+  heartbeat.max-interval-minutes                = 120                  (u32)
+  heartbeat.deadman-timeout-minutes             = 0                    (u32)
+  heartbeat.deadman-channel                     = <unset>              (Option<String>)
+  heartbeat.deadman-to                          = <unset>              (Option<String>)
+  heartbeat.max-run-history                     = 100                  (u32)
+  heartbeat.load-session-context                = false                (bool)
+  heartbeat.task-timeout-secs                   = 600                  (u64)
+
+Cron:
+  cron.enabled                                  = true                 (bool)
+  cron.catch-up-on-startup                      = true                 (bool)
+  cron.max-run-history                          = 50                   (u32)
+
+Channels:
+  channels.cli                                  = true                 (bool)
+  channels.message-timeout-secs                 = 300                  (u64)
+  channels.ack-reactions                        = true                 (bool)
+  channels.show-tool-calls                      = false                (bool)
+  channels.session-persistence                  = true                 (bool)
+  channels.session-backend                      = sqlite               (String)
+  channels.session-ttl-hours                    = 0                    (u32)
+  channels.debounce-ms                          = 0                    (u64)
+
+Memory:
+  memory.backend                                = sqlite               (String)
+  memory.auto-save                              = true                 (bool)
+  memory.hygiene-enabled                        = true                 (bool)
+  memory.archive-after-days                     = 7                    (u32)
+  memory.purge-after-days                       = 30                   (u32)
+  memory.conversation-retention-days            = 30                   (u32)
+  memory.embedding-provider                     = none                 (String)
+  memory.embedding-model                        = text-embedding-3-small (String)
+  memory.embedding-dimensions                   = 1536                 (usize)
+  memory.vector-weight                          = 0.7                  (f64)
+  memory.keyword-weight                         = 0.3                  (f64)
+  memory.search-mode                            = hybrid               (SearchMode)
+  memory.min-relevance-score                    = 0.4                  (f64)
+  memory.embedding-cache-size                   = 10000                (usize)
+  memory.chunk-max-tokens                       = 512                  (usize)
+  memory.response-cache-enabled                 = false                (bool)
+  memory.response-cache-ttl-minutes             = 60                   (u32)
+  memory.response-cache-max-entries             = 5000                 (usize)
+  memory.response-cache-hot-entries             = 256                  (usize)
+  memory.snapshot-enabled                       = false                (bool)
+  memory.snapshot-on-hygiene                    = false                (bool)
+  memory.auto-hydrate                           = true                 (bool)
+  memory.retrieval-stages                       = ["cache", "fts", "vector"] (Vec<String>)
+  memory.rerank-enabled                         = false                (bool)
+  memory.rerank-threshold                       = 5                    (usize)
+  memory.fts-early-return-score                 = 0.85                 (f64)
+  memory.default-namespace                      = default              (String)
+  memory.conflict-threshold                     = 0.85                 (f64)
+  memory.audit-enabled                          = false                (bool)
+  memory.audit-retention-days                   = 30                   (u32)
+  memory.sqlite-open-timeout-secs               = <unset>              (Option<u64>)
+  memory.policy.max-entries-per-namespace       = 0                    (usize)
+  memory.policy.max-entries-per-category        = 0                    (usize)
+  memory.policy.read-only-namespaces            = []                   (Vec<String>)
+  memory.qdrant.url                             = <unset>              (Option<String>)
+  memory.qdrant.collection                      = zeroclaw_memories    (String)
+  memory.qdrant.api-key                         = <unset>              (Option<String>)
+
+Storage:
+  storage.provider.provider                     =                      (String)
+  storage.provider.db-url                       = <unset>              (Option<String>) ≡ƒöÆ
+  storage.provider.schema                       = public               (String)
+  storage.provider.table                        = memories             (String)
+  storage.provider.connect-timeout-secs         = <unset>              (Option<u64>)
+
+Tunnel:
+  tunnel.provider                               = none                 (String)
+
+Gateway:
+  gateway.port                                  = 42617                (u16)
+  gateway.host                                  = 127.0.0.1            (String)
+  gateway.require-pairing                       = true                 (bool)
+  gateway.allow-public-bind                     = false                (bool)
+  gateway.paired-tokens                         = [****, ****, ****, ****, ****, ****, ****, ****, ****] (Vec<String>) ≡ƒöÆ
+  gateway.pair-rate-limit-per-minute            = 10                   (u32)
+  gateway.webhook-rate-limit-per-minute         = 60                   (u32)
+  gateway.trust-forwarded-headers               = false                (bool)
+  gateway.path-prefix                           = <unset>              (Option<String>)
+  gateway.rate-limit-max-keys                   = 10000                (usize)
+  gateway.idempotency-ttl-secs                  = 300                  (u64)
+  gateway.idempotency-max-keys                  = 10000                (usize)
+  gateway.session-persistence                   = true                 (bool)
+  gateway.session-ttl-hours                     = 0                    (u32)
+  gateway.web-dist-dir                          = E:/Ganji-Development/ganjiclaw/web/dist (Option<String>)
+  gateway.pairing-dashboard.code-length         = 8                    (usize)
+  gateway.pairing-dashboard.code-ttl-secs       = 3600                 (u64)
+  gateway.pairing-dashboard.max-pending-codes   = 3                    (usize)
+  gateway.pairing-dashboard.max-failed-attempts = 5                    (u32)
+  gateway.pairing-dashboard.lockout-secs        = 300                  (u64)
+
+Composio:
+  composio.enabled                              = false                (bool)
+  composio.api-key                              = <unset>              (Option<String>) ≡ƒöÆ
+  composio.entity-id                            = default              (String)
+
+Ms365:
+  ms365.enabled                                 = false                (bool)
+  ms365.tenant-id                               = <unset>              (Option<String>)
+  ms365.client-id                               = <unset>              (Option<String>)
+  ms365.client-secret                           = <unset>              (Option<String>) ≡ƒöÆ
+  ms365.auth-flow                               = client_credentials   (String)
+  ms365.scopes                                  = ["https://graph.microsoft.com/.default"] (Vec<String>)
+  ms365.token-cache-encrypted                   = true                 (bool)
+  ms365.user-id                                 = <unset>              (Option<String>)
+
+Secrets:
+  secrets.encrypt                               = true                 (bool)
+
+Browser:
+  browser.enabled                               = true                 (bool)
+  browser.allowed-domains                       = ["*"]                (Vec<String>)
+  browser.session-name                          = <unset>              (Option<String>)
+  browser.backend                               = agent_browser        (String)
+  browser.native-headless                       = true                 (bool)
+  browser.native-webdriver-url                  = http://127.0.0.1:9515 (String)
+  browser.native-chrome-path                    = <unset>              (Option<String>)
+  browser.computer-use.endpoint                 = http://127.0.0.1:8787/v1/actions (String)
+  browser.computer-use.api-key                  = <unset>              (Option<String>) ≡ƒöÆ
+  browser.computer-use.timeout-ms               = 15000                (u64)
+  browser.computer-use.allow-remote-endpoint    = false                (bool)
+  browser.computer-use.window-allowlist         = []                   (Vec<String>)
+  browser.computer-use.max-coordinate-x         = <unset>              (Option<i64>)
+  browser.computer-use.max-coordinate-y         = <unset>              (Option<i64>)
+
+Browser-delegate:
+  browser-delegate.enabled                      = false                (bool)
+  browser-delegate.cli-binary                   = claude               (String)
+  browser-delegate.chrome-profile-dir           =                      (String)
+  browser-delegate.allowed-domains              = []                   (Vec<String>)
+  browser-delegate.blocked-domains              = []                   (Vec<String>)
+  browser-delegate.task-timeout-secs            = 120                  (u64)
+
+Http-request:
+  http-request.enabled                          = true                 (bool)
+  http-request.allowed-domains                  = ["*"]                (Vec<String>)
+  http-request.max-response-size                = 1000000              (usize)
+  http-request.timeout-secs                     = 30                   (u64)
+  http-request.allow-private-hosts              = false                (bool)
+
+Multimodal:
+  multimodal.max-images                         = 4                    (usize)
+  multimodal.max-image-size-mb                  = 5                    (usize)
+  multimodal.allow-remote-fetch                 = false                (bool)
+  multimodal.vision-provider                    = <unset>              (Option<String>)
+  multimodal.vision-model                       = <unset>              (Option<String>)
+
+Media-pipeline:
+  media-pipeline.enabled                        = false                (bool)
+  media-pipeline.transcribe-audio               = true                 (bool)
+  media-pipeline.describe-images                = true                 (bool)
+  media-pipeline.summarize-video                = true                 (bool)
+
+Web-fetch:
+  web-fetch.enabled                             = true                 (bool)
+  web-fetch.allowed-domains                     = ["*"]                (Vec<String>)
+  web-fetch.blocked-domains                     = []                   (Vec<String>)
+  web-fetch.allowed-private-hosts               = []                   (Vec<String>)
+  web-fetch.max-response-size                   = 500000               (usize)
+  web-fetch.timeout-secs                        = 30                   (u64)
+  web-fetch.firecrawl.enabled                   = false                (bool)
+  web-fetch.firecrawl.api-key-env               = FIRECRAWL_API_KEY    (String)
+  web-fetch.firecrawl.api-url                   = https://api.firecrawl.dev/v1 (String)
+  web-fetch.firecrawl.mode                      = scrape               (FirecrawlMode)
+
+Link-enricher:
+  link-enricher.enabled                         = false                (bool)
+  link-enricher.max-links                       = 3                    (usize)
+  link-enricher.timeout-secs                    = 10                   (u64)
+
+Text-browser:
+  text-browser.enabled                          = false                (bool)
+  text-browser.preferred-browser                = <unset>              (Option<String>)
+  text-browser.timeout-secs                     = 30                   (u64)
+
+Web-search:
+  web-search.enabled                            = true                 (bool)
+  web-search.provider                           = duckduckgo           (String)
+  web-search.brave-api-key                      = <unset>              (Option<String>) ≡ƒöÆ
+  web-search.searxng-instance-url               = <unset>              (Option<String>)
+  web-search.max-results                        = 5                    (usize)
+  web-search.timeout-secs                       = 15                   (u64)
+
+Project-intel:
+  project-intel.enabled                         = false                (bool)
+  project-intel.default-language                = en                   (String)
+  project-intel.report-output-dir               = ~/.zeroclaw/project-reports (String)
+  project-intel.templates-dir                   = <unset>              (Option<String>)
+  project-intel.risk-sensitivity                = medium               (String)
+  project-intel.include-git-data                = true                 (bool)
+  project-intel.include-jira-data               = false                (bool)
+  project-intel.jira-base-url                   = <unset>              (Option<String>)
+
+Google-workspace:
+  google-workspace.enabled                      = false                (bool)
+  google-workspace.allowed-services             = []                   (Vec<String>)
+  google-workspace.credentials-path             = <unset>              (Option<String>)
+  google-workspace.default-account              = <unset>              (Option<String>)
+  google-workspace.rate-limit-per-minute        = 60                   (u32)
+  google-workspace.timeout-secs                 = 30                   (u64)
+  google-workspace.audit-log                    = false                (bool)
+
+Proxy:
+  proxy.enabled                                 = false                (bool)
+  proxy.http-proxy                              = <unset>              (Option<String>)
+  proxy.https-proxy                             = <unset>              (Option<String>)
+  proxy.all-proxy                               = <unset>              (Option<String>)
+  proxy.no-proxy                                = []                   (Vec<String>)
+  proxy.scope                                   = zeroclaw             (ProxyScope)
+  proxy.services                                = []                   (Vec<String>)
+
+Identity:
+  identity.format                               = openclaw             (String)
+  identity.aieos-path                           = <unset>              (Option<String>)
+  identity.aieos-inline                         = <unset>              (Option<String>)
+
+Cost:
+  cost.enabled                                  = true                 (bool)
+  cost.daily-limit-usd                          = 10.0                 (f64)
+  cost.monthly-limit-usd                        = 100.0                (f64)
+  cost.warn-at-percent                          = 80                   (u8)
+  cost.allow-override                           = false                (bool)
+  cost.enforcement.mode                         = warn                 (String)
+  cost.enforcement.route-down-model             = <unset>              (Option<String>)
+  cost.enforcement.reserve-percent              = 10                   (u8)
+
+Peripherals:
+  peripherals.enabled                           = false                (bool)
+  peripherals.datasheet-dir                     = <unset>              (Option<String>)
+
+Delegate:
+  delegate.timeout-secs                         = 120                  (u64)
+  delegate.agentic-timeout-secs                 = 300                  (u64)
+
+Hooks:
+  hooks.enabled                                 = true                 (bool)
+  hooks.builtin.command-logger                  = false                (bool)
+  hooks.builtin.webhook-audit.enabled           = false                (bool)
+  hooks.builtin.webhook-audit.url               =                      (String)
+  hooks.builtin.webhook-audit.tool-patterns     = []                   (Vec<String>)
+  hooks.builtin.webhook-audit.include-args      = false                (bool)
+  hooks.builtin.webhook-audit.max-args-bytes    = 4096                 (u64)
+
+Hardware:
+  hardware.enabled                              = false                (bool)
+  hardware.transport                            = None                 (HardwareTransport)
+  hardware.serial-port                          = <unset>              (Option<String>)
+  hardware.baud-rate                            = 115200               (u32)
+  hardware.probe-target                         = <unset>              (Option<String>)
+  hardware.workspace-datasheets                 = false                (bool)
+
+Transcription:
+  transcription.enabled                         = false                (bool)
+  transcription.default-provider                = groq                 (String)
+  transcription.api-key                         = <unset>              (Option<String>) ≡ƒöÆ
+  transcription.api-url                         = https://api.groq.com/openai/v1/audio/transcriptions (String)
+  transcription.model                           = whisper-large-v3-turbo (String)
+  transcription.language                        = <unset>              (Option<String>)
+  transcription.initial-prompt                  = <unset>              (Option<String>)
+  transcription.max-duration-secs               = 120                  (u64)
+  transcription.transcribe-non-ptt-audio        = false                (bool)
+
+TTS:
+  tts.enabled                                   = false                (bool)
+  tts.default-provider                          = openai               (String)
+  tts.default-voice                             = alloy                (String)
+  tts.default-format                            = mp3                  (String)
+  tts.max-text-length                           = 4096                 (usize)
+
+Mcp:
+  mcp.enabled                                   = false                (bool)
+  mcp.deferred-loading                          = true                 (bool)
+
+Nodes:
+  nodes.enabled                                 = false                (bool)
+  nodes.max-nodes                               = 16                   (usize)
+  nodes.auth-token                              = <unset>              (Option<String>)
+
+Workspace:
+  workspace.enabled                             = false                (bool)
+  workspace.active-workspace                    = <unset>              (Option<String>)
+  workspace.workspaces-dir                      = ~/.zeroclaw/workspaces (String)
+  workspace.isolate-memory                      = true                 (bool)
+  workspace.isolate-secrets                     = true                 (bool)
+  workspace.isolate-audit                       = true                 (bool)
+  workspace.cross-workspace-search              = false                (bool)
+
+Notion:
+  notion.enabled                                = false                (bool)
+  notion.api-key                                = <unset>              (String) ≡ƒöÆ
+  notion.database-id                            =                      (String)
+  notion.poll-interval-secs                     = 5                    (u64)
+  notion.status-property                        = Status               (String)
+  notion.input-property                         = Input                (String)
+  notion.result-property                        = Result               (String)
+  notion.max-concurrent                         = 4                    (usize)
+  notion.recover-stale                          = true                 (bool)
+
+Jira:
+  jira.enabled                                  = false                (bool)
+  jira.base-url                                 =                      (String)
+  jira.email                                    =                      (String)
+  jira.api-token                                = <unset>              (String) ≡ƒöÆ
+  jira.allowed-actions                          = ["get_ticket"]       (Vec<String>)
+  jira.timeout-secs                             = 30                   (u64)
+
+Node-transport:
+  node-transport.enabled                        = true                 (bool)
+  node-transport.shared-secret                  =                      (String)
+  node-transport.max-request-age-secs           = 300                  (i64)
+  node-transport.require-https                  = true                 (bool)
+  node-transport.allowed-peers                  = []                   (Vec<String>)
+  node-transport.tls-cert-path                  = <unset>              (Option<String>)
+  node-transport.tls-key-path                   = <unset>              (Option<String>)
+  node-transport.mutual-tls                     = false                (bool)
+  node-transport.connection-pool-size           = 4                    (usize)
+
+Knowledge:
+  knowledge.enabled                             = false                (bool)
+  knowledge.db-path                             = ~/.zeroclaw/knowledge.db (String)
+  knowledge.max-nodes                           = 100000               (usize)
+  knowledge.auto-capture                        = false                (bool)
+  knowledge.suggest-on-query                    = true                 (bool)
+  knowledge.cross-workspace-search              = false                (bool)
+
+Linkedin:
+  linkedin.enabled                              = false                (bool)
+  linkedin.api-version                          = 202602               (String)
+  linkedin.content.rss-feeds                    = []                   (Vec<String>)
+  linkedin.content.github-users                 = []                   (Vec<String>)
+  linkedin.content.github-repos                 = []                   (Vec<String>)
+  linkedin.content.topics                       = []                   (Vec<String>)
+  linkedin.content.persona                      =                      (String)
+  linkedin.content.instructions                 =                      (String)
+  linkedin.image.enabled                        = false                (bool)
+  linkedin.image.providers                      = ["stability", "imagen", "dalle", "flux"] (Vec<String>)
+  linkedin.image.fallback-card                  = true                 (bool)
+  linkedin.image.card-accent-color              = #0A66C2              (String)
+  linkedin.image.temp-dir                       = linkedin/images      (String)
+  linkedin.image.stability.api-key-env          = STABILITY_API_KEY    (String)
+  linkedin.image.stability.model                = stable-diffusion-xl-1024-v1-0 (String)
+  linkedin.image.imagen.api-key-env             = GOOGLE_VERTEX_API_KEY (String)
+  linkedin.image.imagen.project-id-env          = GOOGLE_CLOUD_PROJECT (String)
+  linkedin.image.imagen.region                  = us-central1          (String)
+  linkedin.image.dalle.api-key-env              = OPENAI_API_KEY       (String)
+  linkedin.image.dalle.model                    = dall-e-3             (String)
+  linkedin.image.dalle.size                     = 1024x1024            (String)
+  linkedin.image.flux.api-key-env               = FAL_API_KEY          (String)
+  linkedin.image.flux.model                     = fal-ai/flux/schnell  (String)
+
+Image-gen:
+  image-gen.enabled                             = false                (bool)
+  image-gen.default-model                       = fal-ai/flux/schnell  (String)
+  image-gen.api-key-env                         = FAL_API_KEY          (String)
+
+Plugins:
+  plugins.enabled                               = false                (bool)
+  plugins.plugins-dir                           = ~/.zeroclaw/plugins  (String)
+  plugins.auto-discover                         = false                (bool)
+  plugins.max-plugins                           = 50                   (usize)
+  plugins.security.signature-mode               = disabled             (String)
+  plugins.security.trusted-publisher-keys       = []                   (Vec<String>)
+
+Verifiable-intent:
+  verifiable-intent.enabled                     = false                (bool)
+  verifiable-intent.strictness                  = strict               (String)
+
+Claude-code:
+  claude-code.enabled                           = false                (bool)
+  claude-code.timeout-secs                      = 600                  (u64)
+  claude-code.allowed-tools                     = ["Read", "Edit", "Bash", "Write"] (Vec<String>)
+  claude-code.system-prompt                     = <unset>              (Option<String>)
+  claude-code.max-output-bytes                  = 2097152              (usize)
+  claude-code.env-passthrough                   = []                   (Vec<String>)
+
+Claude-code-runner:
+  claude-code-runner.enabled                    = false                (bool)
+  claude-code-runner.ssh-host                   = <unset>              (Option<String>)
+  claude-code-runner.tmux-prefix                = zc-claude-           (String)
+  claude-code-runner.session-ttl                = 3600                 (u64)
+
+Codex-cli:
+  codex-cli.enabled                             = false                (bool)
+  codex-cli.timeout-secs                        = 600                  (u64)
+  codex-cli.max-output-bytes                    = 2097152              (usize)
+  codex-cli.env-passthrough                     = []                   (Vec<String>)
+
+Gemini-cli:
+  gemini-cli.enabled                            = false                (bool)
+  gemini-cli.timeout-secs                       = 600                  (u64)
+  gemini-cli.max-output-bytes                   = 2097152              (usize)
+  gemini-cli.env-passthrough                    = []                   (Vec<String>)
+
+Opencode-cli:
+  opencode-cli.enabled                          = false                (bool)
+  opencode-cli.timeout-secs                     = 600                  (u64)
+  opencode-cli.max-output-bytes                 = 2097152              (usize)
+  opencode-cli.env-passthrough                  = []                   (Vec<String>)
+
+Sop:
+  sop.sops-dir                                  = <unset>              (Option<String>)
+  sop.default-execution-mode                    = supervised           (String)
+  sop.max-concurrent-total                      = 4                    (usize)
+  sop.approval-timeout-secs                     = 300                  (u64)
+  sop.max-finished-runs                         = 100                  (usize)
+
+Shell-tool:
+  shell-tool.timeout-secs                       = 60                   (u64)
+
+Activity_archive:
+  activity_archive.enabled                      = false                (bool)
+  activity_archive.database-path                = <unset>              (Option<String>)
+  activity_archive.collectors                   = { browser_history = true, file_activity = false, file_activity_folders = [], poll_interval_seconds = 2, process_launch = true, shell_activity = true, window_focus = true } (CollectorConfig)
+  activity_archive.sessionizer                  = { context_switch_threshold_minutes = 15, idle_timeout_minutes = 30 } (SessionizerConfig)
+  activity_archive.summarizer                   = { daily_log_enabled = true, enabled = true, hourly_summary_enabled = true, project_summary_enabled = true } (SummarizerConfig)
+  activity_archive.notion-sync                  = { api_key = "", daily_logs_database_id = "", enabled = false, projects_database_id = "", sessions_database_id = "", sync_interval_minutes = 5 } (NotionSyncConfig)
+  activity_archive.privacy                      = { clipboard_whitelist = [], exclude_domains = [], exclude_paths = [], exclude_titles = [], redact_clipboard = true } (PrivacyConfig)

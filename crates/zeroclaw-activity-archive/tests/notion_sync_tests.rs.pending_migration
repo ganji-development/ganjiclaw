@@ -1,7 +1,7 @@
 //! Tests for the Notion sync pipeline.
 
-use crate::notion_sync::{NotionSync, SyncStats};
-use crate::schema::*;
+use zeroclaw_activity_archive::notion_sync::{NotionSync, SyncStats};
+use zeroclaw_activity_archive::schema::*;
 use parking_lot::Mutex;
 use rusqlite::Connection;
 use tempfile::NamedTempFile;

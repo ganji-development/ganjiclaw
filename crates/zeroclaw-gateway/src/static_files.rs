@@ -26,6 +26,7 @@ pub async fn handle_static(State(state): State<AppState>, uri: Uri) -> Response 
 /// SPA fallback: serve index.html for any non-API, non-static GET request.
 /// Injects `window.__ZEROCLAW_BASE__` so the frontend knows the path prefix.
 pub async fn handle_spa_fallback(State(state): State<AppState>) -> Response {
+    println!("handle_spa_fallback {:?}", state.web_dist_dir);
     let Some(ref dist_dir) = state.web_dist_dir else {
         return (
             StatusCode::SERVICE_UNAVAILABLE,

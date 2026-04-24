@@ -60,6 +60,7 @@ pub struct CollectorConfig {
     pub file_activity: bool,
     pub file_activity_folders: Vec<String>,
     pub poll_interval_seconds: u64,
+    pub idle_threshold_seconds: u64,
 }
 
 /// Sessionizer configuration.
@@ -127,6 +128,7 @@ impl ActivityArchiveRuntime {
             collectors.push(Box::new(WindowFocusCollector::new(
                 db_path.clone(),
                 config.collectors.poll_interval_seconds,
+                config.collectors.idle_threshold_seconds,
             )));
         }
 

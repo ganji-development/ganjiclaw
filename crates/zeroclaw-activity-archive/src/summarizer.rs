@@ -425,3 +425,95 @@ impl Summarizer {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::schema::{init_schema, Event, EventType};
+    use parking_lot::Mutex;
+    use std::sync::Arc;
+
+    fn setup_db() -> Arc<Mutex<rusqlite::Connection>> {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        init_schema(&conn).unwrap();
+        Arc::new(Mutex::new(conn))
+    }
+
+    fn insert_event(db: &Arc<Mutex<rusqlite::Connection>>, ts: DateTime<Utc>, app: &str) {
+        let id = uuid::Uuid::new_v4().to_string();
+        let conn = db.lock();
+        conn.execute(
+            "INSERT INTO events (id, ts_utc, ts_local, source, event_type, app, title, details_json, sensitivity, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            rusqlite::params![
+                id, ts.to_rfc3339(), chrono::Local::now().to_rfc3339(),
+                "window_focus", "window_focus", app,
+                format!("{} - title", app), "{}", 0, Utc::now().to_rfc3339(),
+            ],
+        ).unwrap();
+    }
+
+    #[test]
+    fn test_hourly_summary_content() {
+        let db = setup_db();
+        let hour = Utc::now() - chrono::Duration::hours(1);
+
+        // Insert events within the hour
+        for i in 0..5 {
+            insert_event(&db, hour + chrono::Duration::minutes(i * 10), "Code.exe");
+        }
+        for i in 0..3 {
+            insert_event(&db, hour + chrono::Duration::minutes(5 + i * 10), "Chrome.exe");
+        }
+
+        let summarizer = Summarizer::new(db);
+        let summary = summarizer.generate_hourly_summary(hour).unwrap();
+
+        assert!(!summary.content.is_empty());
+        assert!(summary.content.contains("Total events: 8"));
+        assert!(summary.metrics["total_events"].as_u64().unwrap() == 8);
+        assert!(summary.metrics["apps"].is_object());
+    }
+
+    #[test]
+    fn test_daily_log_content() {
+        let db = setup_db();
+        let today = Utc::now().date_naive();
+        let start = today.and_hms_opt(10, 0, 0).unwrap().and_utc();
+
+        insert_event(&db, start, "Code.exe");
+        insert_event(&db, start + chrono::Duration::hours(1), "Chrome.exe");
+
+        let summarizer = Summarizer::new(db);
+        let summary = summarizer.generate_daily_log(today).unwrap();
+
+        assert!(!summary.content.is_empty());
+        assert_eq!(summary.summary_type, SummaryType::Daily);
+    }
+
+    #[test]
+    fn test_empty_period_summary() {
+        let db = setup_db();
+        let hour = Utc::now() - chrono::Duration::hours(100);
+        let summarizer = Summarizer::new(db);
+        let summary = summarizer.generate_hourly_summary(hour).unwrap();
+        assert!(summary.content.contains("No activity"));
+    }
+
+    #[test]
+    fn test_metrics_structure() {
+        let db = setup_db();
+        let hour = Utc::now() - chrono::Duration::hours(1);
+        insert_event(&db, hour + chrono::Duration::minutes(5), "Code.exe");
+
+        let summarizer = Summarizer::new(db);
+        let summary = summarizer.generate_hourly_summary(hour).unwrap();
+
+        let metrics = &summary.metrics;
+        assert!(metrics.get("total_events").is_some());
+        assert!(metrics.get("event_types").is_some());
+        assert!(metrics.get("apps").is_some());
+        assert!(metrics.get("projects").is_some());
+    }
+}
+

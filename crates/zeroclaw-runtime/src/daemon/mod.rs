@@ -6,6 +6,9 @@ use tokio::task::JoinHandle;
 use tokio::time::Duration;
 use zeroclaw_config::schema::Config;
 
+#[cfg(target_os = "windows")]
+pub mod activity_archive;
+
 const STATUS_FLUSH_SECONDS: u64 = 5;
 
 /// Wait for shutdown signal (SIGINT or SIGTERM).
@@ -76,6 +79,16 @@ pub struct DaemonSubsystems {
             dyn Fn(
                     zeroclaw_config::schema::MqttConfig,
                 ) -> std::pin::Pin<Box<dyn Future<Output = Result<()>> + Send>>
+                + Send
+                + Sync,
+        >,
+    >,
+    /// Start the activity archive runtime. Windows-only; injected by the
+    /// binary when the target supports the archive's Win32 collectors.
+    #[cfg(target_os = "windows")]
+    pub activity_archive_start: Option<
+        Box<
+            dyn Fn(Config) -> std::pin::Pin<Box<dyn Future<Output = Result<()>> + Send>>
                 + Send
                 + Sync,
         >,
@@ -206,6 +219,31 @@ pub async fn run(
     } else {
         crate::health::mark_component_ok("scheduler");
         tracing::info!("Cron disabled; scheduler supervisor not started");
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(archive_start) = subsystems.activity_archive_start {
+            if config.activity_archive.enabled {
+                let archive_cfg = config.clone();
+                let archive_start = std::sync::Arc::new(archive_start);
+                handles.push(spawn_component_supervisor(
+                    "activity_archive",
+                    initial_backoff,
+                    max_backoff,
+                    move || {
+                        let cfg = archive_cfg.clone();
+                        let start = archive_start.clone();
+                        async move { start(cfg).await }
+                    },
+                ));
+            } else {
+                crate::health::mark_component_ok("activity_archive");
+                tracing::info!("Activity archive disabled; supervisor not started");
+            }
+        } else {
+            crate::health::mark_component_ok("activity_archive");
+        }
     }
 
     println!("🧠 ZeroClaw daemon started");

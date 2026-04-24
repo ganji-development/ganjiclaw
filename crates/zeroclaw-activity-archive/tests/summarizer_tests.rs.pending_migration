@@ -1,7 +1,7 @@
 //! Tests for the summarizer.
 
-use crate::summarizer::Summarizer;
-use crate::schema::*;
+use zeroclaw_activity_archive::summarizer::Summarizer;
+use zeroclaw_activity_archive::schema::*;
 use parking_lot::Mutex;
 use rusqlite::Connection;
 use tempfile::NamedTempFile;

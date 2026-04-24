@@ -1,8 +1,8 @@
 //! Tests for the collector framework.
 
-use crate::collector::{Collector, OffsetTracker};
-use crate::collectors::{WindowFocusCollector, ProcessLaunchCollector, BrowserHistoryCollector, ShellActivityCollector, FileActivityCollector};
-use crate::schema::RawEvent;
+use zeroclaw_activity_archive::collector::{Collector, OffsetTracker};
+use zeroclaw_activity_archive::collectors::{WindowFocusCollector, ProcessLaunchCollector, BrowserHistoryCollector, ShellActivityCollector, FileActivityCollector};
+use zeroclaw_activity_archive::schema::RawEvent;
 use tempfile::NamedTempFile;
 use std::path::PathBuf;
 
@@ -25,7 +25,7 @@ fn test_offset_tracker_get_offset_initial() {
 
     // Initialize database
     let conn = rusqlite::Connection::open(&db_path).unwrap();
-    crate::schema::init_schema(&conn).unwrap();
+    zeroclaw_activity_archive::schema::init_schema(&conn).unwrap();
 
     // Get initial offset (should be None)
     let offset = tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -44,7 +44,7 @@ fn test_offset_tracker_save_and_get() {
 
     // Initialize database
     let conn = rusqlite::Connection::open(&db_path).unwrap();
-    crate::schema::init_schema(&conn).unwrap();
+    zeroclaw_activity_archive::schema::init_schema(&conn).unwrap();
 
     let rt = tokio::runtime::Runtime::new().unwrap();
 
@@ -79,7 +79,7 @@ fn test_window_focus_collector_creation() {
     let temp_file = NamedTempFile::new().unwrap();
     let db_path = temp_file.path().to_path_buf();
 
-    let collector = crate::collectors::WindowFocusCollector::new(db_path, 2);
+    let collector = zeroclaw_activity_archive::collectors::WindowFocusCollector::new(db_path, 2);
 
     assert_eq!(collector.name(), "window_focus");
 }
@@ -89,7 +89,7 @@ fn test_process_launch_collector_creation() {
     let temp_file = NamedTempFile::new().unwrap();
     let db_path = temp_file.path().to_path_buf();
 
-    let collector = crate::collectors::ProcessLaunchCollector::new(db_path);
+    let collector = zeroclaw_activity_archive::collectors::ProcessLaunchCollector::new(db_path);
 
     assert_eq!(collector.name(), "process_launch");
 }
@@ -99,7 +99,7 @@ fn test_browser_history_collector_creation() {
     let temp_file = NamedTempFile::new().unwrap();
     let db_path = temp_file.path().to_path_buf();
 
-    let collector = crate::collectors::BrowserHistoryCollector::new(db_path);
+    let collector = zeroclaw_activity_archive::collectors::BrowserHistoryCollector::new(db_path);
 
     assert_eq!(collector.name(), "browser_history");
 }
@@ -109,7 +109,7 @@ fn test_shell_activity_collector_creation() {
     let temp_file = NamedTempFile::new().unwrap();
     let db_path = temp_file.path().to_path_buf();
 
-    let collector = crate::collectors::ShellActivityCollector::new(db_path);
+    let collector = zeroclaw_activity_archive::collectors::ShellActivityCollector::new(db_path);
 
     assert_eq!(collector.name(), "shell_activity");
 }
@@ -124,7 +124,7 @@ fn test_file_activity_collector_creation() {
         PathBuf::from("/test/folder"),
     ];
 
-    let collector = crate::collectors::FileActivityCollector::new(db_path, folders);
+    let collector = zeroclaw_activity_archive::collectors::FileActivityCollector::new(db_path, folders);
 
     assert_eq!(collector.name(), "file_activity");
 }
@@ -134,7 +134,7 @@ fn test_collector_trait_methods() {
     let temp_file = NamedTempFile::new().unwrap();
     let db_path = temp_file.path().to_path_buf();
 
-    let collector = crate::collectors::WindowFocusCollector::new(db_path, 2);
+    let collector = zeroclaw_activity_archive::collectors::WindowFocusCollector::new(db_path, 2);
 
     // Test trait methods
     assert_eq!(collector.name(), "window_focus");
@@ -160,10 +160,10 @@ fn test_multiple_collectors() {
     let db_path = temp_file.path().to_path_buf();
 
     let collectors: Vec<Box<dyn Collector>> = vec![
-        Box::new(crate::collectors::WindowFocusCollector::new(db_path.clone(), 2)),
-        Box::new(crate::collectors::ProcessLaunchCollector::new(db_path.clone())),
-        Box::new(crate::collectors::BrowserHistoryCollector::new(db_path.clone())),
-        Box::new(crate::collectors::ShellActivityCollector::new(db_path.clone())),
+        Box::new(zeroclaw_activity_archive::collectors::WindowFocusCollector::new(db_path.clone(), 2)),
+        Box::new(zeroclaw_activity_archive::collectors::ProcessLaunchCollector::new(db_path.clone())),
+        Box::new(zeroclaw_activity_archive::collectors::BrowserHistoryCollector::new(db_path.clone())),
+        Box::new(zeroclaw_activity_archive::collectors::ShellActivityCollector::new(db_path.clone())),
     ];
 
     assert_eq!(collectors.len(), 4);

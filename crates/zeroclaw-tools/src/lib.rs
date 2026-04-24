@@ -3,6 +3,8 @@
 pub mod microsoft365;
 pub mod util_helpers;
 
+pub mod activity_archive_tools;
+
 pub mod ask_user;
 pub mod backup_tool;
 pub mod browser;

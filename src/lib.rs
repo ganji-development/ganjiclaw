@@ -232,6 +232,13 @@ pub enum ServiceCommands {
         #[arg(long, value_parser = ["user", "system"])]
         scope: Option<String>,
     },
+    /// Update the config directory for the system service (Windows only)
+    #[cfg(target_os = "windows")]
+    SetConfigDir {
+        /// Path to the config directory
+        #[arg(long)]
+        path: String,
+    },
 }
 
 /// Channel management subcommands

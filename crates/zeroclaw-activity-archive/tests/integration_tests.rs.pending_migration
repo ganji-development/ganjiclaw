@@ -1,6 +1,6 @@
 //! Integration tests for the activity archive system.
 
-use crate::runtime::{ActivityArchiveRuntime, ActivityArchiveConfig, CollectorConfig, SessionizerConfig, SummarizerConfig, NotionSyncConfig, PrivacyConfig};
+use zeroclaw_activity_archive::runtime::{ActivityArchiveRuntime, ActivityArchiveConfig, CollectorConfig, SessionizerConfig, SummarizerConfig, NotionSyncConfig, PrivacyConfig};
 use tempfile::TempDir;
 use std::path::PathBuf;
 

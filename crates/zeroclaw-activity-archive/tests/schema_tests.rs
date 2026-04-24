@@ -1,9 +1,8 @@
 //! Tests for the activity archive database schema.
 
-use crate::schema::*;
+use zeroclaw_activity_archive::schema::*;
 use rusqlite::Connection;
 use tempfile::NamedTempFile;
-use std::path::Path;
 
 #[test]
 fn test_init_schema() {

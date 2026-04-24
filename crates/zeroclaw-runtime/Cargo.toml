@@ -85,6 +85,8 @@ libc = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-service = "0.8"
+winreg = "0.52"
+zeroclaw-activity-archive.workspace = true
 
 # Optional deps for specific features
 pdf-extract = { version = "0.10", optional = true }

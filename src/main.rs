@@ -1461,6 +1461,12 @@ async fn main() -> Result<()> {
                         .await
                     })
                 })),
+                #[cfg(target_os = "windows")]
+                activity_archive_start: Some(Box::new(|config| {
+                    Box::pin(async move {
+                        zeroclaw_runtime::daemon::activity_archive::start(config).await
+                    })
+                })),
             };
             Box::pin(daemon::run(config, host, port, subsystems)).await
         }

@@ -2,6 +2,7 @@ pub use zeroclaw_runtime::service::*;
 
 use crate::config::Config;
 use anyhow::Result;
+use std::path::PathBuf;
 
 #[allow(dead_code)]
 pub fn handle_command(
@@ -67,6 +68,11 @@ pub fn handle_command(
                 .transpose()?
                 .unwrap_or_else(|| installed_scope.unwrap_or(ServiceScope::User));
             logs(config, init_system, scope, *lines, *follow)
+        }
+        #[cfg(target_os = "windows")]
+        crate::ServiceCommands::SetConfigDir { path } => {
+            let config_dir = PathBuf::from(&path);
+            windows::update_config_dir(&config_dir)
         }
     }
 }

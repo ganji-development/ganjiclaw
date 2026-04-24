@@ -1,7 +1,7 @@
 //! Tests for the sessionizer.
 
-use crate::sessionizer::Sessionizer;
-use crate::schema::*;
+use zeroclaw_activity_archive::sessionizer::Sessionizer;
+use zeroclaw_activity_archive::schema::*;
 use parking_lot::Mutex;
 use rusqlite::Connection;
 use tempfile::NamedTempFile;

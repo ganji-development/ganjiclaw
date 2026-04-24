@@ -56,6 +56,11 @@ impl OffsetTracker {
         }
     }
 
+    /// Get a reference to the database path.
+    pub fn db_path(&self) -> &std::path::Path {
+        &self.db_path
+    }
+
     /// Get the last offset from the database.
     pub async fn get_offset(&self) -> anyhow::Result<Option<String>> {
         use rusqlite::Connection;

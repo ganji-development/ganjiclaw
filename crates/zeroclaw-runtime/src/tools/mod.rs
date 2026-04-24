@@ -108,6 +108,14 @@ pub use zeroclaw_tools::web_search_tool::WebSearchTool;
 pub use zeroclaw_tools::workspace_tool::WorkspaceTool;
 pub use zeroclaw_tools::wrappers::{PathGuardedTool, RateLimitedTool};
 
+// Activity Archive tools
+pub use zeroclaw_tools::activity_archive_tools::{
+    ActivityArchiveViewTool, ActivityArchiveStatsTool, ActivityArchiveSearchTool,
+    ActivityArchiveListSessionsTool, ActivityArchiveSummarizeTool,
+    ActivityArchivePrivacyListTool, ActivityArchivePrivacyAddTool,
+    ActivityArchivePrivacyRemoveTool, ActivityArchiveSyncNotionTool,
+};
+
 // Traits from zeroclaw-api
 pub use zeroclaw_api::schema::{CleaningStrategy, SchemaCleanr};
 pub use zeroclaw_api::tool::{Tool, ToolResult, ToolSpec};
@@ -598,6 +606,25 @@ pub fn all_tools_with_runtime(
     if root_config.cloud_ops.enabled {
         tool_arcs.push(Arc::new(CloudOpsTool::new(root_config.cloud_ops.clone())));
         tool_arcs.push(Arc::new(CloudPatternsTool::new()));
+    }
+
+    // Activity Archive tools (config-gated)
+    if root_config.activity_archive.enabled {
+        let db_path = if let Some(ref p) = root_config.activity_archive.database_path {
+            std::path::PathBuf::from(p)
+        } else {
+            workspace_dir.join("activity_archive.db")
+        };
+        tool_arcs.push(Arc::new(ActivityArchiveViewTool::new(db_path.clone())));
+        tool_arcs.push(Arc::new(ActivityArchiveStatsTool::new(db_path.clone())));
+        tool_arcs.push(Arc::new(ActivityArchiveSearchTool::new(db_path.clone())));
+        tool_arcs.push(Arc::new(ActivityArchiveListSessionsTool::new(db_path.clone())));
+        tool_arcs.push(Arc::new(ActivityArchiveSummarizeTool::new(db_path.clone())));
+        tool_arcs.push(Arc::new(ActivityArchivePrivacyListTool::new(db_path.clone())));
+        tool_arcs.push(Arc::new(ActivityArchivePrivacyAddTool::new(db_path.clone())));
+        tool_arcs.push(Arc::new(ActivityArchivePrivacyRemoveTool::new(db_path.clone())));
+        tool_arcs.push(Arc::new(ActivityArchiveSyncNotionTool::new(db_path)));
+        tracing::info!("Registered 9 activity archive tools");
     }
 
     // Google Workspace CLI (gws) integration — requires shell access
