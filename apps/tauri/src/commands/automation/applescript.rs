@@ -131,28 +131,3 @@ pub async fn run_applescript_action(
     run_osascript(&script).await
 }
 
-/// Deny-list of dangerous AppleScript constructs.
-const RAW_DENY_PATTERNS: &[&str] = &[
-    "do shell script",
-    "run script",
-    "system attribute",
-    "call method",
-    "current application",
-    "NSAppleScript",
-    "do javascript",
-];
-
-/// Execute raw AppleScript. Disabled by default — callers must opt in.
-/// Scripts are checked against a deny-list of dangerous constructs.
-#[tauri::command]
-pub async fn run_applescript_raw(script: String) -> Result<String, String> {
-    let lower = script.to_lowercase();
-    for pattern in RAW_DENY_PATTERNS {
-        if lower.contains(&pattern.to_lowercase()) {
-            return Err(format!(
-                "Blocked: script contains disallowed construct '{pattern}'"
-            ));
-        }
-    }
-    run_osascript(&script).await
-}

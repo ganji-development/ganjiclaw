@@ -108,7 +108,6 @@ pub fn run() {
             commands::permissions::open_privacy_settings,
             // Automation
             commands::automation::applescript::run_applescript_action,
-            commands::automation::applescript::run_applescript_raw,
             commands::automation::screen::capture_screen,
             commands::automation::camera::capture_photo,
             commands::automation::microphone::record_audio,
