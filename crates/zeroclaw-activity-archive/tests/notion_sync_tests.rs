@@ -1,0 +1,310 @@
+//! Tests for the Notion sync pipeline.
+
+use crate::notion_sync::{NotionSync, SyncStats};
+use crate::schema::*;
+use parking_lot::Mutex;
+use rusqlite::Connection;
+use tempfile::NamedTempFile;
+use std::sync::Arc;
+use std::time::Duration;
+
+#[test]
+fn test_notion_sync_creation() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let notion_sync = NotionSync::new(
+        Arc::new(Mutex::new(conn)),
+        "test_api_key".to_string(),
+        "test_daily_logs_db".to_string(),
+        "test_sessions_db".to_string(),
+        "test_projects_db".to_string(),
+        Duration::from_secs(300),
+    );
+
+    assert!(notion_sync.get_sync_stats().is_ok());
+}
+
+#[test]
+fn test_notion_sync_queue_daily_log() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let notion_sync = NotionSync::new(
+        Arc::new(Mutex::new(conn)),
+        "test_api_key".to_string(),
+        "test_daily_logs_db".to_string(),
+        "test_sessions_db".to_string(),
+        "test_projects_db".to_string(),
+        Duration::from_secs(300),
+    );
+
+    let mut summary = Summary::new(SummaryType::Daily, Utc::now(), Utc::now());
+    summary.content = "Test daily log content".to_string();
+
+    let result = notion_sync.queue_daily_log(&summary);
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_notion_sync_queue_session() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let notion_sync = NotionSync::new(
+        Arc::new(Mutex::new(conn)),
+        "test_api_key".to_string(),
+        "test_daily_logs_db".to_string(),
+        "test_sessions_db".to_string(),
+        "test_projects_db".to_string(),
+        Duration::from_secs(300),
+    );
+
+    let session = Session::new(Utc::now());
+
+    let result = notion_sync.queue_session(&session);
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_notion_sync_queue_project() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let notion_sync = NotionSync::new(
+        Arc::new(Mutex::new(conn)),
+        "test_api_key".to_string(),
+        "test_daily_logs_db".to_string(),
+        "test_sessions_db".to_string(),
+        "test_projects_db".to_string(),
+        Duration::from_secs(300),
+    );
+
+    let mut summary = Summary::new(SummaryType::Project, Utc::now(), Utc::now());
+    summary.content = "Test project summary".to_string();
+
+    let result = notion_sync.queue_project("test_project", &summary);
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_notion_sync_get_pending_items() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let notion_sync = NotionSync::new(
+        Arc::new(Mutex::new(conn)),
+        "test_api_key".to_string(),
+        "test_daily_logs_db".to_string(),
+        "test_sessions_db".to_string(),
+        "test_projects_db".to_string(),
+        Duration::from_secs(300),
+    );
+
+    // Queue an item first
+    let mut summary = Summary::new(SummaryType::Daily, Utc::now(), Utc::now());
+    summary.content = "Test daily log content".to_string();
+    notion_sync.queue_daily_log(&summary).unwrap();
+
+    // Get pending items
+    let pending = notion_sync.get_pending_items(10).unwrap();
+
+    // Should have one pending item
+    assert_eq!(pending.len(), 1);
+}
+
+#[test]
+fn test_notion_sync_get_sync_stats() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let notion_sync = NotionSync::new(
+        Arc::new(Mutex::new(conn)),
+        "test_api_key".to_string(),
+        "test_daily_logs_db".to_string(),
+        "test_sessions_db".to_string(),
+        "test_projects_db".to_string(),
+        Duration::from_secs(300),
+    );
+
+    let stats = notion_sync.get_sync_stats().unwrap();
+
+    // Initially all counts should be 0
+    assert_eq!(stats.pending, 0);
+    assert_eq!(stats.syncing, 0);
+    assert_eq!(stats.synced, 0);
+    assert_eq!(stats.failed, 0);
+}
+
+#[test]
+fn test_notion_sync_item_creation() {
+    let payload = serde_json::json!({
+        "test_field": "test_value",
+    });
+
+    let item = NotionSyncItem::new(
+        NotionSyncType::DailyLog,
+        "test_target_id".to_string(),
+        payload.clone(),
+    );
+
+    assert_eq!(item.sync_type, NotionSyncType::DailyLog);
+    assert_eq!(item.target_id, "test_target_id");
+    assert_eq!(item.payload, payload);
+    assert_eq!(item.status, SyncStatus::Pending);
+    assert!(item.notion_page_id.is_none());
+    assert!(item.error_message.is_none());
+    assert_eq!(item.retry_count, 0);
+}
+
+#[test]
+fn test_notion_sync_type_conversions() {
+    assert_eq!(NotionSyncType::DailyLog.as_str(), "daily_log");
+    assert_eq!(NotionSyncType::Session.as_str(), "session");
+    assert_eq!(NotionSyncType::Project.as_str(), "project");
+    assert_eq!(NotionSyncType::Pattern.as_str(), "pattern");
+    assert_eq!(NotionSyncType::Decision.as_str(), "decision");
+
+    assert_eq!(NotionSyncType::from_str("daily_log"), Some(NotionSyncType::DailyLog));
+    assert_eq!(NotionSyncType::from_str("session"), Some(NotionSyncType::Session));
+    assert_eq!(NotionSyncType::from_str("invalid"), None);
+}
+
+#[test]
+fn test_sync_status_conversions() {
+    assert_eq!(SyncStatus::Pending.as_str(), "pending");
+    assert_eq!(SyncStatus::Syncing.as_str(), "syncing");
+    assert_eq!(SyncStatus::Synced.as_str(), "synced");
+    assert_eq!(SyncStatus::Failed.as_str(), "failed");
+
+    assert_eq!(SyncStatus::from_str("pending"), Some(SyncStatus::Pending));
+    assert_eq!(SyncStatus::from_str("syncing"), Some(SyncStatus::Syncing));
+    assert_eq!(SyncStatus::from_str("synced"), Some(SyncStatus::Synced));
+    assert_eq!(SyncStatus::from_str("failed"), Some(SyncStatus::Failed));
+    assert_eq!(SyncStatus::from_str("invalid"), None);
+}
+
+#[test]
+fn test_notion_sync_store_sync_item() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let notion_sync = NotionSync::new(
+        Arc::new(Mutex::new(conn)),
+        "test_api_key".to_string(),
+        "test_daily_logs_db".to_string(),
+        "test_sessions_db".to_string(),
+        "test_projects_db".to_string(),
+        Duration::from_secs(300),
+    );
+
+    let payload = serde_json::json!({
+        "test_field": "test_value",
+    });
+
+    let item = NotionSyncItem::new(
+        NotionSyncType::DailyLog,
+        "test_target_id".to_string(),
+        payload,
+    );
+
+    let result = notion_sync.store_sync_item(&item);
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_notion_sync_update_item_status() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let notion_sync = NotionSync::new(
+        Arc::new(Mutex::new(conn)),
+        "test_api_key".to_string(),
+        "test_daily_logs_db".to_string(),
+        "test_sessions_db".to_string(),
+        "test_projects_db".to_string(),
+        Duration::from_secs(300),
+    );
+
+    let payload = serde_json::json!({
+        "test_field": "test_value",
+    });
+
+    let item = NotionSyncItem::new(
+        NotionSyncType::DailyLog,
+        "test_target_id".to_string(),
+        payload,
+    );
+
+    // Store item first
+    notion_sync.store_sync_item(&item).unwrap();
+
+    // Update status
+    let result = notion_sync.update_item_status(&item.id, SyncStatus::Synced, Some("page_123".to_string()));
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_notion_sync_increment_retry_count() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let notion_sync = NotionSync::new(
+        Arc::new(Mutex::new(conn)),
+        "test_api_key".to_string(),
+        "test_daily_logs_db".to_string(),
+        "test_sessions_db".to_string(),
+        "test_projects_db".to_string(),
+        Duration::from_secs(300),
+    );
+
+    let payload = serde_json::json!({
+        "test_field": "test_value",
+    });
+
+    let item = NotionSyncItem::new(
+        NotionSyncType::DailyLog,
+        "test_target_id".to_string(),
+        payload,
+    );
+
+    // Store item first
+    notion_sync.store_sync_item(&item).unwrap();
+
+    // Increment retry count
+    let result = notion_sync.increment_item_retry_count(&item.id);
+
+    assert!(result.is_ok());
+}

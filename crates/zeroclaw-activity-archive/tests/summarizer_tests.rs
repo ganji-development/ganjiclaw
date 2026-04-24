@@ -1,0 +1,258 @@
+//! Tests for the summarizer.
+
+use crate::summarizer::Summarizer;
+use crate::schema::*;
+use parking_lot::Mutex;
+use rusqlite::Connection;
+use tempfile::NamedTempFile;
+use std::sync::Arc;
+use chrono::{Duration, NaiveDate, Utc};
+
+#[test]
+fn test_summarizer_creation() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let summarizer = Summarizer::new(Arc::new(Mutex::new(conn)));
+
+    assert!(summarizer.generate_hourly_summary(Utc::now()).is_ok());
+}
+
+#[test]
+fn test_summarizer_generate_hourly_summary() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let summarizer = Summarizer::new(Arc::new(Mutex::new(conn)));
+
+    let hour = Utc::now() - Duration::hours(1);
+    let result = summarizer.generate_hourly_summary(hour);
+
+    assert!(result.is_ok());
+
+    let summary = result.unwrap();
+    assert_eq!(summary.summary_type, SummaryType::Hourly);
+    assert_eq!(summary.period_start, hour);
+    assert_eq!(summary.period_end, hour + Duration::hours(1));
+}
+
+#[test]
+fn test_summarizer_generate_daily_log() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let summarizer = Summarizer::new(Arc::new(Mutex::new(conn)));
+
+    let date = Utc::now().date_naive();
+    let result = summarizer.generate_daily_log(date);
+
+    assert!(result.is_ok());
+
+    let summary = result.unwrap();
+    assert_eq!(summary.summary_type, SummaryType::Daily);
+    assert!(summary.content.contains("Activity for the last"));
+}
+
+#[test]
+fn test_summarizer_generate_project_summary() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let summarizer = Summarizer::new(Arc::new(Mutex::new(conn)));
+
+    let start = Utc::now() - Duration::days(7);
+    let end = Utc::now();
+    let result = summarizer.generate_project_summary("test_project", start, end);
+
+    assert!(result.is_ok());
+
+    let summary = result.unwrap();
+    assert_eq!(summary.summary_type, SummaryType::Project);
+    assert_eq!(summary.project_key, Some("test_project".to_string()));
+}
+
+#[test]
+fn test_summarizer_get_events_in_range() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let summarizer = Summarizer::new(Arc::new(Mutex::new(conn)));
+
+    let start = Utc::now() - Duration::hours(1);
+    let end = Utc::now();
+
+    let events = summarizer.get_events_in_range(start, end).unwrap();
+
+    // Should return empty vector for new database
+    assert!(events.is_empty());
+}
+
+#[test]
+fn test_summarizer_get_project_events_in_range() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let summarizer = Summarizer::new(Arc::new(Mutex::new(conn)));
+
+    let start = Utc::now() - Duration::days(7);
+    let end = Utc::now();
+
+    let events = summarizer.get_project_events_in_range("test_project", start, end).unwrap();
+
+    // Should return empty vector for new database
+    assert!(events.is_empty());
+}
+
+#[test]
+fn test_summarizer_generate_summary_content() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let summarizer = Summarizer::new(Arc::new(Mutex::new(conn)));
+
+    let events = vec![];
+
+    let content = summarizer.generate_summary_content(&events, "test");
+
+    assert!(content.contains("No activity recorded"));
+}
+
+#[test]
+fn test_summarizer_generate_daily_log_content() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let summarizer = Summarizer::new(Arc::new(Mutex::new(conn)));
+
+    let events = vec![];
+
+    let content = summarizer.generate_daily_log_content(&events);
+
+    assert!(content.contains("No activity recorded today"));
+}
+
+#[test]
+fn test_summarizer_generate_project_summary_content() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let summarizer = Summarizer::new(Arc::new(Mutex::new(conn)));
+
+    let events = vec![];
+
+    let content = summarizer.generate_project_summary_content("test_project", &events);
+
+    assert!(content.contains("No activity recorded for project"));
+}
+
+#[test]
+fn test_summarizer_calculate_metrics() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let summarizer = Summarizer::new(Arc::new(Mutex::new(conn)));
+
+    let events = vec![];
+
+    let metrics = summarizer.calculate_metrics(&events);
+
+    // Should have total_events count
+    assert!(metrics.get("total_events").is_some());
+
+    // Should have empty event_types, apps, projects
+    if let Some(event_types) = metrics.get("event_types") {
+        assert_eq!(event_types.as_object().unwrap().len(), 0);
+    }
+}
+
+#[test]
+fn test_summarizer_calculate_metrics_with_events() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let summarizer = Summarizer::new(Arc::new(Mutex::new(conn)));
+
+    let mut event1 = Event::new("window_focus".to_string(), EventType::WindowFocus);
+    event1.app = Some("VSCode".to_string());
+
+    let mut event2 = Event::new("window_focus".to_string(), EventType::WindowFocus);
+    event2.app = Some("VSCode".to_string());
+
+    let events = vec![event1, event2];
+
+    let metrics = summarizer.calculate_metrics(&events);
+
+    // Should have total_events count
+    assert_eq!(metrics["total_events"], 2);
+
+    // Should have event_types count
+    assert!(metrics.get("event_types").is_some());
+
+    // Should have apps count
+    assert!(metrics.get("apps").is_some());
+}
+
+#[test]
+fn test_summarizer_get_summary() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let db_path = temp_file.path();
+
+    let conn = Connection::open(db_path).unwrap();
+    init_schema(&conn).unwrap();
+
+    let summarizer = Summarizer::new(Arc::new(Mutex::new(conn)));
+
+    let start = Utc::now() - Duration::hours(1);
+    let end = Utc::now();
+
+    // Should return None for non-existent summary
+    let result = summarizer.get_summary(SummaryType::Hourly, start, end).unwrap();
+
+    assert!(result.is_none());
+}
+
+#[test]
+fn test_summary_type_conversions() {
+    assert_eq!(SummaryType::Hourly.as_str(), "hourly");
+    assert_eq!(SummaryType::Daily.as_str(), "daily");
+    assert_eq!(SummaryType::Weekly.as_str(), "weekly");
+    assert_eq!(SummaryType::Project.as_str(), "project");
+    assert_eq!(SummaryType::Topic.as_str(), "topic");
+
+    assert_eq!(SummaryType::from_str("hourly"), Some(SummaryType::Hourly));
+    assert_eq!(SummaryType::from_str("daily"), Some(SummaryType::Daily));
+    assert_eq!(SummaryType::from_str("invalid"), None);
+}
