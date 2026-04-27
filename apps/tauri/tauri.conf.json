@@ -1,13 +1,13 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/config.schema.json",
   "productName": "ZeroClaw",
-  "version": "0.7.1",
+  "version": "0.7.3",
   "identifier": "ai.zeroclawlabs.desktop",
   "build": {
-    "beforeBuildCommand": "pnpm -C ../web install && pnpm -C ../web build -- --base=/",
-    "beforeDevCommand": "pnpm -C ../web dev -- --base=/",
+    "beforeBuildCommand": "pnpm -C ../web install && pnpm -C ../web build",
+    "beforeDevCommand": "pnpm -C ../web dev",
     "devUrl": "http://localhost:5173",
-    "frontendDist": "../../web/dist"
+    "frontendDist": "../../web/dist-tauri"
   },
   "app": {
     "windows": [

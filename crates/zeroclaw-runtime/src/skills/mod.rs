@@ -128,16 +128,62 @@ pub fn load_skills(workspace_dir: &Path) -> Vec<Skill> {
 }
 
 /// Load skills using runtime config values (preferred at runtime).
+///
+/// Skills whose directory basename appears in `config.skills.disabled_skills`
+/// are filtered out after loading, so the agent does not see them but the
+/// files remain on disk (re-enable is just a config edit).
 pub fn load_skills_with_config(
     workspace_dir: &Path,
     config: &zeroclaw_config::schema::Config,
 ) -> Vec<Skill> {
-    load_skills_with_open_skills_config(
+    let mut skills = load_skills_with_open_skills_config(
         workspace_dir,
         Some(config.skills.open_skills_enabled),
         config.skills.open_skills_dir.as_deref(),
         Some(config.skills.allow_scripts),
-    )
+    );
+
+    if !config.skills.disabled_skills.is_empty() {
+        let disabled: HashSet<&str> = config
+            .skills
+            .disabled_skills
+            .iter()
+            .map(String::as_str)
+            .collect();
+        skills.retain(|skill| match skill_dir_name(skill) {
+            Some(name) => !disabled.contains(name.as_str()),
+            None => true,
+        });
+    }
+
+    skills
+}
+
+/// Stable identifier for an installed skill (the canonical id used by the
+/// dashboard's enable/disable/uninstall flows). Returns `None` for skills
+/// synthesized in-memory without an on-disk location.
+///
+/// `Skill::location` points at the manifest file:
+/// - `…/skills/<dir>/SKILL.{md,toml}` → returns `<dir>`
+/// - bare open-skill markdown like `…/open-skills/<topic>.md` → returns `<topic>`
+pub fn skill_dir_name(skill: &Skill) -> Option<String> {
+    let location = skill.location.as_ref()?;
+    let file_name = location.file_name().and_then(|n| n.to_str())?;
+    let is_manifest = file_name.eq_ignore_ascii_case("SKILL.md")
+        || file_name.eq_ignore_ascii_case("SKILL.toml");
+    if is_manifest {
+        location
+            .parent()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .map(str::to_string)
+    } else {
+        // bare open-skill markdown: strip extension
+        Path::new(file_name)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(str::to_string)
+    }
 }
 
 /// Load skills using explicit open-skills settings.
@@ -1357,4 +1403,116 @@ pub fn install_clawhub_skill_source(
             Err(err)
         }
     }
+}
+
+/// Dispatcher used by the dashboard / API. Picks the right installer based
+/// on the source string:
+/// - `clawhub:<slug>` or `https://clawhub.ai/...` → ClawHub registry
+/// - `git@`, `*.git`, or generic `http(s)://` non-clawhub → git clone
+/// - otherwise treated as a local filesystem path
+pub fn install_skill_dispatch(
+    source: &str,
+    skills_path: &Path,
+    allow_scripts: bool,
+) -> Result<(PathBuf, usize)> {
+    if !skills_path.exists() {
+        std::fs::create_dir_all(skills_path)
+            .with_context(|| format!("failed to create skills dir {}", skills_path.display()))?;
+    }
+
+    if is_clawhub_source(source) {
+        return install_clawhub_skill_source(source, skills_path, allow_scripts);
+    }
+
+    let looks_like_git = source.ends_with(".git")
+        || source.starts_with("git@")
+        || source.starts_with("git://")
+        || source.starts_with("https://")
+        || source.starts_with("http://");
+
+    if looks_like_git {
+        return install_git_skill_source(source, skills_path, allow_scripts);
+    }
+
+    install_local_skill_source(source, skills_path, allow_scripts)
+}
+
+/// Query the ClawHub registry's `/api/v1/search` endpoint and return the
+/// raw JSON body. The dashboard proxies through this so the browser never
+/// has to talk to clawhub directly (CORS + single-source-of-truth for
+/// registry interaction).
+pub async fn search_clawhub_registry(query: &str) -> Result<serde_json::Value> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return Ok(serde_json::json!({"results": []}));
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .context("failed to build clawhub HTTP client")?;
+
+    let url = "https://clawhub.ai/api/v1/search";
+    let resp = client
+        .get(url)
+        .query(&[("q", trimmed)])
+        .send()
+        .await
+        .with_context(|| format!("clawhub search request failed: {url}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("clawhub search returned HTTP {status}: {text}");
+    }
+
+    let value: serde_json::Value = resp
+        .json()
+        .await
+        .context("clawhub search response was not valid JSON")?;
+    Ok(value)
+}
+
+/// Remove an installed skill directory by its basename. Refuses to operate
+/// on `.` / `..`, paths containing separators, or anything that escapes
+/// `skills_path` after canonicalization.
+pub fn uninstall_skill_by_dir_name(skills_path: &Path, dir_name: &str) -> Result<()> {
+    let trimmed = dir_name.trim();
+    if trimmed.is_empty()
+        || trimmed == "."
+        || trimmed == ".."
+        || trimmed.contains('/')
+        || trimmed.contains('\\')
+        || trimmed.contains(':')
+    {
+        anyhow::bail!("invalid skill id: {dir_name:?}");
+    }
+
+    let target = skills_path.join(trimmed);
+    if !target.exists() {
+        anyhow::bail!("skill not found: {trimmed}");
+    }
+
+    let canonical_skills = skills_path
+        .canonicalize()
+        .with_context(|| format!("failed to canonicalize {}", skills_path.display()))?;
+    let canonical_target = target
+        .canonicalize()
+        .with_context(|| format!("failed to canonicalize {}", target.display()))?;
+    if !canonical_target.starts_with(&canonical_skills) {
+        anyhow::bail!("skill path escapes the skills directory");
+    }
+
+    let target_meta = std::fs::symlink_metadata(&canonical_target)
+        .with_context(|| format!("failed to stat {}", canonical_target.display()))?;
+    if target_meta.file_type().is_symlink() {
+        anyhow::bail!("refusing to remove a symlinked skill path");
+    }
+    if !target_meta.is_dir() {
+        anyhow::bail!("skill path is not a directory");
+    }
+
+    std::fs::remove_dir_all(&canonical_target)
+        .with_context(|| format!("failed to remove {}", canonical_target.display()))?;
+    Ok(())
 }

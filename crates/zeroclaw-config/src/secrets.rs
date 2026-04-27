@@ -27,7 +27,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Length of the random encryption key in bytes (256-bit, matches `ChaCha20`).
-#[cfg(test)]
 const KEY_LEN: usize = 32;
 
 /// ChaCha20-Poly1305 nonce length in bytes.
@@ -173,7 +172,13 @@ impl SecretStore {
         if self.key_path.exists() {
             let hex_key =
                 fs::read_to_string(&self.key_path).context("Failed to read secret key file")?;
-            hex_decode(hex_key.trim()).context("Secret key file is corrupt")
+            let key = hex_decode(hex_key.trim()).context("Secret key file is corrupt")?;
+            anyhow::ensure!(
+                key.len() == KEY_LEN,
+                "Secret key file is corrupt: expected {KEY_LEN} bytes, got {}",
+                key.len()
+            );
+            Ok(key)
         } else {
             let key = generate_random_key();
             if let Some(parent) = self.key_path.parent() {

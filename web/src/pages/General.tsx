@@ -60,7 +60,12 @@ export default function General() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const init = async () => {
+      await load();
+    };
+    init();
+  }, [load]);
 
   const handleToggleSetting = async (key: keyof DesktopSettings) => {
     if (!settings) return;

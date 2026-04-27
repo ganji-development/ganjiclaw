@@ -311,7 +311,7 @@ async fn run_node_connection(state: &SharedState) -> anyhow::Result<()> {
     if let Some(ref t) = token {
         request.headers_mut().insert(
             "Authorization",
-            format!("Bearer {t}").parse().unwrap_or_default(),
+            format!("Bearer {t}").parse()?,
         );
     }
 

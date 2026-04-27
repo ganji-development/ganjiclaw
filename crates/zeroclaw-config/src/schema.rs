@@ -1680,6 +1680,12 @@ pub struct SkillsConfig {
     /// `full` preserves legacy behavior. `compact` keeps context small and loads skills on demand.
     #[serde(default)]
     pub prompt_injection_mode: SkillsPromptInjectionMode,
+    /// Skill directory basenames that should be skipped during loading.
+    /// Toggled by the dashboard / `/api/skills/{id}/disable` to deactivate a
+    /// skill without uninstalling it. Matched against the directory name on
+    /// disk (the canonical id), not the manifest's display name.
+    #[serde(default)]
+    pub disabled_skills: Vec<String>,
     /// Autonomous skill creation from successful multi-step task executions.
     #[serde(default)]
     #[nested]

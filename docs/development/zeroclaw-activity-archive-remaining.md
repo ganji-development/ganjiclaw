@@ -4,9 +4,7 @@ Forward-looking to-do list, stripped of completed items. For full context and do
 
 ## Deferred from earlier phases
 
-- [ ] **E2E sanity run.** Set `activity_archive.enabled = true` in [e:/zeroclaw/.zeroclaw/config.toml](../../e:/zeroclaw/.zeroclaw/config.toml), start `zeroclaw daemon`, tab between a few windows for ~30s, stop, then `sqlite3 activity_archive.db "SELECT source, value FROM raw_events LIMIT 20"`. Confirms the daemon-supervised collector actually writes events.
-- [ ] **Migrate 7 shelved test files inline.** The `tests/*.rs.pending_migration` files access private APIs — they were unit tests misplaced into the external `tests/` dir. Move each one's content into `#[cfg(test)] mod tests { ... }` at the bottom of the corresponding `src/*.rs`. Fix API drift along the way: missing `Default` impls on `*Config` types in `runtime.rs`, `PathBuf`-doesn't-implement-`Display` in `collector_tests`, missing `Normalizer::redact`.
-- [ ] **Make `IDLE_THRESHOLD_SECONDS` configurable.** Add `idle_threshold_seconds: u64` to `CollectorConfig` in [schema.rs](../../crates/zeroclaw-config/src/schema.rs), pass through the runtime config translation in [daemon/activity_archive.rs](../../crates/zeroclaw-runtime/src/daemon/activity_archive.rs), thread to `WindowFocusCollector::new`.
+- [ ] **E2E sanity run.** Set `activity_archive.enabled = true` in [e:/zeroclaw/.zeroclaw/config.toml](../../e:/zeroclaw/.zeroclaw/config.toml), start `zeroclaw daemon`, tab between a few windows for ~30s, stop, then `sqlite3 activity_archive.db "SELECT source, app, substr(title,1,80) FROM events ORDER BY id DESC LIMIT 20"`. Confirms the daemon-supervised collector emits events that survive the normalizer + privacy filter and land in `events`.
 - [ ] **Mock-backed event stream test.** Feed synthetic `get_foreground_window_info` / `get_idle_seconds` into `WindowFocusCollector::start`'s stream loop, assert the sequence of emitted `RawEvent`s for window changes and idle transitions.
 
 ## Phase 2 — Implement the stub collectors

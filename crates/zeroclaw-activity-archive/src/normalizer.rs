@@ -131,8 +131,6 @@ impl Normalizer {
             event.details = serde_json::json!({ "command": command });
         }
 
-        event.raw_ref = Some(raw.id.clone());
-
         Ok(event)
     }
 
@@ -158,8 +156,10 @@ impl Normalizer {
                 }
                 PrivacyRuleType::ExcludeDomain => {
                     if let Some(url) = event.details.get("url").and_then(|v| v.as_str()) {
-                        if self.matches_pattern(url, &rule.pattern) {
-                            return true;
+                        if let Some(host) = self.extract_domain_from_url(url) {
+                            if self.matches_pattern(&host, &rule.pattern) {
+                                return true;
+                            }
                         }
                     }
                 }
@@ -301,21 +301,20 @@ impl Normalizer {
         None
     }
 
-    /// Check if a value matches a pattern.
+    /// Check if a value matches a pattern. Case-insensitive.
     fn matches_pattern(&self, value: &str, pattern: &str) -> bool {
-        // Support glob patterns
         if pattern.contains('*') {
             let regex_pattern = pattern
                 .replace('.', r"\.")
                 .replace('*', ".*")
                 .replace('?', ".");
-            if let Ok(re) = regex::Regex::new(&format!("^{}$", regex_pattern)) {
+            // (?i) — privacy patterns must match regardless of case.
+            if let Ok(re) = regex::Regex::new(&format!("(?i)^{}$", regex_pattern)) {
                 return re.is_match(value);
             }
         }
 
-        // Exact match
-        value == pattern
+        value.eq_ignore_ascii_case(pattern)
     }
 
     /// Hash a value for privacy.
@@ -335,8 +334,8 @@ impl Normalizer {
         conn.execute(
             "INSERT INTO events (
                 id, ts_utc, ts_local, source, event_type, actor, host, app, title, path,
-                details_json, sensitivity, project_key, session_id, hash, raw_ref, created_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+                details_json, sensitivity, project_key, session_id, hash, created_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             params![
                 event.id,
                 event.ts_utc.to_rfc3339(),
@@ -353,7 +352,6 @@ impl Normalizer {
                 event.project_key,
                 event.session_id,
                 event.hash,
-                event.raw_ref,
                 event.created_at.to_rfc3339(),
             ],
         )?;
@@ -439,7 +437,6 @@ mod tests {
             Some("main.rs - MyProject - Visual Studio Code")
         );
         assert!(event.hash.is_some());
-        assert!(event.raw_ref.is_some());
     }
 
     #[test]

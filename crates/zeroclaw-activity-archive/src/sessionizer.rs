@@ -58,7 +58,7 @@ impl Sessionizer {
         let conn = self.db.lock();
         let mut stmt = conn.prepare(
             "SELECT id, ts_utc, ts_local, source, event_type, actor, host, app, title, path,
-                    details_json, sensitivity, project_key, session_id, hash, raw_ref, created_at
+                    details_json, sensitivity, project_key, session_id, hash, created_at
              FROM events
              WHERE session_id IS NULL
              ORDER BY ts_utc ASC"
@@ -86,8 +86,7 @@ impl Sessionizer {
                 project_key: row.get(12)?,
                 session_id: row.get(13)?,
                 hash: row.get(14)?,
-                raw_ref: row.get(15)?,
-                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(16)?)
+                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(15)?)
                     .unwrap()
                     .with_timezone(&Utc),
             })
@@ -300,7 +299,6 @@ mod tests {
             project_key: project.map(|s| s.to_string()),
             session_id: None,
             hash: None,
-            raw_ref: None,
             created_at: Utc::now(),
         };
         let conn = db.lock();

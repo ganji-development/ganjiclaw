@@ -1,0 +1,4 @@
+
+> zeroclaw-web@0.1.0 lint E:\Ganji-Development\ganjiclaw\web
+> eslint .
+

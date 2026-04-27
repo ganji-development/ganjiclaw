@@ -11,6 +11,7 @@
 //! collectors land, this module gate can relax.
 
 use anyhow::Result;
+use chrono;
 use zeroclaw_activity_archive::runtime::{
     ActivityArchiveConfig as RuntimeActivityArchiveConfig, ActivityArchiveRuntime,
     CollectorConfig as RuntimeCollectorConfig, NotionSyncConfig as RuntimeNotionSyncConfig,
@@ -24,12 +25,40 @@ use zeroclaw_config::schema::{
 };
 
 /// Build the archive runtime from the daemon config and run it until shutdown.
-///
-/// Invoked from a `spawn_component_supervisor` closure in `daemon::run`. The
-/// supervisor handles restart-with-backoff if this returns an error.
 pub async fn start(config: Config) -> Result<()> {
+    let log_path = config.workspace_dir.join("activity_archive.log");
+    let log_msg = format!("[{}] activity_archive: enabled={}, window_focus={}, workspace={}\n",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"),
+        config.activity_archive.enabled, 
+        config.activity_archive.collectors.window_focus,
+        config.workspace_dir.display());
+    let _ = std::fs::write(&log_path, &log_msg);
+    
+    tracing::info!("activity_archive: enabled={}, window_focus={}, workspace={:?}", 
+        config.activity_archive.enabled, 
+        config.activity_archive.collectors.window_focus,
+        config.workspace_dir);
+    
+    if !config.activity_archive.enabled {
+        let msg = "activity_archive disabled in config";
+        let _ = std::fs::write(&log_path, &format!("{}\n", msg));
+        return Ok(());
+    }
+    if !config.activity_archive.collectors.window_focus {
+        let msg = "window_focus collector disabled in config";
+        let _ = std::fs::write(&log_path, &format!("{}\n", msg));
+        return Ok(());
+    }
+    
     let archive_config = to_runtime_config(config.activity_archive.clone());
-    let runtime = ActivityArchiveRuntime::new(archive_config, &config.workspace_dir)?;
+    let runtime = match ActivityArchiveRuntime::new(archive_config, &config.workspace_dir) {
+        Ok(r) => r,
+        Err(e) => {
+            let msg = format!("Failed to create runtime: {}\n", e);
+            let _ = std::fs::write(&log_path, &msg);
+            return Err(e);
+        }
+    };
     runtime.run().await
 }
 

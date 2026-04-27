@@ -12,6 +12,9 @@ import type {
   Session,
   ChannelDetail,
   SessionMessagesResponse,
+  InstalledSkill,
+  ClawhubSearchResponse,
+  SkillInstallResponse,
 } from '../types/api';
 import { clearToken, getToken, setToken } from './auth';
 import { apiOrigin, basePath } from './basePath';
@@ -376,4 +379,46 @@ export function getCliTools(): Promise<CliTool[]> {
   return apiFetch<CliTool[] | { cli_tools: CliTool[] }>('/api/cli-tools').then((data) =>
     unwrapField(data, 'cli_tools'),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Skills
+// ---------------------------------------------------------------------------
+
+export function getSkills(): Promise<InstalledSkill[]> {
+  return apiFetch<InstalledSkill[] | { skills: InstalledSkill[] }>('/api/skills').then((data) =>
+    unwrapField(data, 'skills'),
+  );
+}
+
+export function installSkill(source: string): Promise<SkillInstallResponse> {
+  return apiFetch<SkillInstallResponse>('/api/skills/install', {
+    method: 'POST',
+    body: JSON.stringify({ source }),
+  });
+}
+
+export function uninstallSkill(id: string): Promise<void> {
+  return apiFetch<void>(`/api/skills/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+}
+
+export function enableSkill(id: string): Promise<{ status: string; changed: boolean }> {
+  return apiFetch<{ status: string; changed: boolean }>(
+    `/api/skills/${encodeURIComponent(id)}/enable`,
+    { method: 'POST' },
+  );
+}
+
+export function disableSkill(id: string): Promise<{ status: string; changed: boolean }> {
+  return apiFetch<{ status: string; changed: boolean }>(
+    `/api/skills/${encodeURIComponent(id)}/disable`,
+    { method: 'POST' },
+  );
+}
+
+export function searchClawhub(query: string): Promise<ClawhubSearchResponse> {
+  const params = new URLSearchParams({ q: query });
+  return apiFetch<ClawhubSearchResponse>(`/api/skills/registry/search?${params}`);
 }

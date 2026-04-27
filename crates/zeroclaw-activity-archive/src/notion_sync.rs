@@ -412,3 +412,123 @@ pub struct SyncStats {
     pub synced: u32,
     pub failed: u32,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::schema::{init_schema, NotionSyncItem, NotionSyncType, Summary, SummaryType, Session, SyncStatus};
+
+    fn make_sync(conn: Connection) -> NotionSync {
+        init_schema(&conn).unwrap();
+        NotionSync::new(
+            Arc::new(Mutex::new(conn)),
+            "test_api_key".to_string(),
+            "daily_db".to_string(),
+            "session_db".to_string(),
+            "project_db".to_string(),
+            Duration::from_secs(300),
+        )
+    }
+
+    fn fresh() -> NotionSync {
+        make_sync(Connection::open_in_memory().unwrap())
+    }
+
+    #[test]
+    fn test_initial_stats_are_zero() {
+        let sync = fresh();
+        let stats = sync.get_sync_stats().unwrap();
+        assert_eq!(stats.pending, 0);
+        assert_eq!(stats.syncing, 0);
+        assert_eq!(stats.synced, 0);
+        assert_eq!(stats.failed, 0);
+    }
+
+    #[test]
+    fn test_queue_daily_log_then_pending() {
+        let sync = fresh();
+        let mut summary = Summary::new(SummaryType::Daily, Utc::now(), Utc::now());
+        summary.content = "today".to_string();
+        sync.queue_daily_log(&summary).unwrap();
+
+        let pending = sync.get_pending_items(10).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].sync_type, NotionSyncType::DailyLog);
+        assert_eq!(pending[0].target_id, "daily_db");
+        assert_eq!(sync.get_sync_stats().unwrap().pending, 1);
+    }
+
+    #[test]
+    fn test_queue_session_uses_session_db() {
+        let sync = fresh();
+        sync.queue_session(&Session::new(Utc::now())).unwrap();
+
+        let pending = sync.get_pending_items(10).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].sync_type, NotionSyncType::Session);
+        assert_eq!(pending[0].target_id, "session_db");
+    }
+
+    #[test]
+    fn test_queue_project_uses_project_db() {
+        let sync = fresh();
+        let mut summary = Summary::new(SummaryType::Project, Utc::now(), Utc::now());
+        summary.content = "proj".to_string();
+        sync.queue_project("test_project", &summary).unwrap();
+
+        let pending = sync.get_pending_items(10).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].sync_type, NotionSyncType::Project);
+        assert_eq!(pending[0].target_id, "project_db");
+    }
+
+    #[test]
+    fn test_update_item_status_moves_out_of_pending() {
+        let sync = fresh();
+        let item = NotionSyncItem::new(
+            NotionSyncType::DailyLog,
+            "target".to_string(),
+            serde_json::json!({}),
+        );
+        sync.store_sync_item(&item).unwrap();
+        assert_eq!(sync.get_sync_stats().unwrap().pending, 1);
+
+        sync.update_item_status(&item.id, SyncStatus::Synced, Some("page_123".into()))
+            .unwrap();
+        let stats = sync.get_sync_stats().unwrap();
+        assert_eq!(stats.pending, 0);
+        assert_eq!(stats.synced, 1);
+    }
+
+    #[test]
+    fn test_increment_retry_count() {
+        let sync = fresh();
+        let item = NotionSyncItem::new(
+            NotionSyncType::DailyLog,
+            "target".to_string(),
+            serde_json::json!({}),
+        );
+        sync.store_sync_item(&item).unwrap();
+
+        sync.increment_item_retry_count(&item.id).unwrap();
+        sync.increment_item_retry_count(&item.id).unwrap();
+
+        let pending = sync.get_pending_items(10).unwrap();
+        assert_eq!(pending[0].retry_count, 2);
+    }
+
+    #[test]
+    fn test_get_pending_items_respects_limit() {
+        let sync = fresh();
+        for _ in 0..5 {
+            let item = NotionSyncItem::new(
+                NotionSyncType::DailyLog,
+                "target".to_string(),
+                serde_json::json!({}),
+            );
+            sync.store_sync_item(&item).unwrap();
+        }
+        assert_eq!(sync.get_pending_items(3).unwrap().len(), 3);
+        assert_eq!(sync.get_pending_items(10).unwrap().len(), 5);
+    }
+}

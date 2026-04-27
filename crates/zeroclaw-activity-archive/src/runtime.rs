@@ -12,13 +12,14 @@ use crate::sessionizer::Sessionizer;
 use crate::summarizer::Summarizer;
 use crate::notion_sync::NotionSync;
 use crate::privacy::PrivacyManager;
-use crate::schema::{open_connection, init_schema};
+use crate::schema::{open_connection, init_schema, SummaryType};
 use parking_lot::Mutex;
 use rusqlite::Connection;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use anyhow::Result;
+use chrono;
 use tokio::sync::broadcast;
 use futures::StreamExt;
 
@@ -100,6 +101,80 @@ pub struct PrivacyConfig {
     pub clipboard_whitelist: Vec<String>,
 }
 
+impl Default for ActivityArchiveConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            database_path: None,
+            collectors: CollectorConfig::default(),
+            sessionizer: SessionizerConfig::default(),
+            summarizer: SummarizerConfig::default(),
+            notion_sync: NotionSyncConfig::default(),
+            privacy: PrivacyConfig::default(),
+        }
+    }
+}
+
+impl Default for CollectorConfig {
+    fn default() -> Self {
+        Self {
+            window_focus: true,
+            process_launch: true,
+            browser_history: true,
+            shell_activity: true,
+            file_activity: false,
+            file_activity_folders: Vec::new(),
+            poll_interval_seconds: 2,
+            idle_threshold_seconds: 120,
+        }
+    }
+}
+
+impl Default for SessionizerConfig {
+    fn default() -> Self {
+        Self {
+            idle_timeout_minutes: 30,
+            context_switch_threshold_minutes: 15,
+        }
+    }
+}
+
+impl Default for SummarizerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            hourly_summary_enabled: true,
+            daily_log_enabled: true,
+            project_summary_enabled: true,
+        }
+    }
+}
+
+impl Default for NotionSyncConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            api_key: String::new(),
+            daily_logs_database_id: String::new(),
+            sessions_database_id: String::new(),
+            projects_database_id: String::new(),
+            sync_interval_minutes: 5,
+        }
+    }
+}
+
+impl Default for PrivacyConfig {
+    fn default() -> Self {
+        Self {
+            exclude_paths: Vec::new(),
+            exclude_titles: Vec::new(),
+            exclude_domains: Vec::new(),
+            redact_clipboard: true,
+            clipboard_whitelist: Vec::new(),
+        }
+    }
+}
+
 impl ActivityArchiveRuntime {
     /// Create a new activity archive runtime.
     ///
@@ -125,11 +200,15 @@ impl ActivityArchiveRuntime {
         let mut collectors: Vec<Box<dyn Collector>> = Vec::new();
 
         if config.collectors.window_focus {
+            tracing::info!("Enabling window_focus collector (poll_interval={}s, idle_threshold={}s)",
+                config.collectors.poll_interval_seconds, config.collectors.idle_threshold_seconds);
             collectors.push(Box::new(WindowFocusCollector::new(
                 db_path.clone(),
                 config.collectors.poll_interval_seconds,
                 config.collectors.idle_threshold_seconds,
             )));
+        } else {
+            tracing::info!("window_focus collector DISABLED in config");
         }
 
         if config.collectors.process_launch {
@@ -200,7 +279,15 @@ impl ActivityArchiveRuntime {
     ///
     /// This method starts all components and runs until shutdown is requested.
     pub async fn run(&self) -> Result<()> {
-        tracing::info!("Starting activity archive runtime");
+        let log_path = std::path::PathBuf::from("E:/zeroclaw/.zeroclaw/workspace/runtime.log");
+        let _ = std::fs::write(&log_path, &format!("[{}] run() called, collectors={}\n", chrono::Utc::now(), self.collectors.len()));
+        
+        tracing::info!("Starting activity archive runtime, {} collectors", self.collectors.len());
+
+        if self.collectors.is_empty() {
+            let _ = std::fs::write(&log_path, &format!("[{}] NO COLLECTORS - check config\n", chrono::Utc::now()));
+            tracing::warn!("No collectors configured!");
+        }
 
         // Start collectors
         let mut collector_tasks = Vec::new();
@@ -212,6 +299,7 @@ impl ActivityArchiveRuntime {
             let mut shutdown_rx = self.shutdown_tx.subscribe();
 
             let task = tokio::spawn(async move {
+                let db_path = std::path::PathBuf::from("E:/zeroclaw/.zeroclaw/workspace/activity.log");
                 tracing::info!("Starting collector: {}", name);
                 let mut stream = stream;
 
@@ -220,8 +308,15 @@ impl ActivityArchiveRuntime {
                         result = stream.next() => {
                             match result {
                                 Some(raw_event) => {
+                                    let log_line = format!("[{:?}] event: {} id={}\n", chrono::Utc::now(), raw_event.source, raw_event.id);
+                                    let _ = std::fs::OpenOptions::new().create(true).append(true).open(&db_path).and_then(|mut f| {use std::io::Write; f.write_all(log_line.as_bytes())});
+                                    
+                                    tracing::debug!("Received raw event: source={}, type={}", 
+                                        raw_event.source, raw_event.id);
                                     if let Err(e) = normalizer.process_raw_event(&raw_event) {
                                         tracing::error!("Failed to process raw event: {}", e);
+                                    } else {
+                                        tracing::debug!("Successfully stored event");
                                     }
                                 }
                                 None => {
@@ -269,7 +364,7 @@ impl ActivityArchiveRuntime {
         let mut summarizer_shutdown_rx = self.shutdown_tx.subscribe();
         let summarizer_task = tokio::spawn(async move {
             tracing::info!("Starting summarizer");
-            let mut interval = tokio::time::interval(Duration::from_secs(300)); // 5 minutes
+            let mut interval = tokio::time::interval(Duration::from_secs(3600)); // 1 hour
 
             loop {
                 tokio::select! {
@@ -279,16 +374,32 @@ impl ActivityArchiveRuntime {
                             if summarizer_config.hourly_summary_enabled {
                                 let now = chrono::Utc::now();
                                 let hour = now - chrono::Duration::hours(1);
-                                if let Err(e) = summarizer.generate_hourly_summary(hour) {
-                                    tracing::error!("Failed to generate hourly summary: {}", e);
+                                // Skip if already exists
+                                if summarizer.get_summary(SummaryType::Hourly, hour, hour + chrono::Duration::hours(1))
+                                    .map(|s| s.is_none()).unwrap_or(false)
+                                {
+                                    let hour = now - chrono::Duration::hours(1);
+                                    if let Err(e) = summarizer.generate_hourly_summary(hour) {
+                                        tracing::error!("Failed to generate hourly summary: {}", e);
+                                    }
+                                } else {
+                                    tracing::debug!("Hourly summary already exists for {}", hour);
                                 }
                             }
 
                             // Generate daily logs
                             if summarizer_config.daily_log_enabled {
                                 let today = chrono::Utc::now().date_naive();
-                                if let Err(e) = summarizer.generate_daily_log(today) {
-                                    tracing::error!("Failed to generate daily log: {}", e);
+                                let next_day = today + chrono::Duration::days(1);
+                                // Skip if already exists
+                                if summarizer.get_summary(SummaryType::Daily, today.and_hms_opt(0,0,0).unwrap().and_utc(), next_day.and_hms_opt(0,0,0).unwrap().and_utc())
+                                    .map(|s| s.is_none()).unwrap_or(false)
+                                {
+                                    if let Err(e) = summarizer.generate_daily_log(today) {
+                                        tracing::error!("Failed to generate daily log: {}", e);
+                                    }
+                                } else {
+                                    tracing::debug!("Daily summary already exists for {}", today);
                                 }
                             }
                         }

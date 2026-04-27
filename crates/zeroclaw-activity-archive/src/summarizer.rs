@@ -102,7 +102,7 @@ impl Summarizer {
         let conn = self.db.lock();
         let mut stmt = conn.prepare(
             "SELECT id, ts_utc, ts_local, source, event_type, actor, host, app, title, path,
-                    details_json, sensitivity, project_key, session_id, hash, raw_ref, created_at
+                    details_json, sensitivity, project_key, session_id, hash, created_at
              FROM events
              WHERE ts_utc >= ?1 AND ts_utc < ?2
              ORDER BY ts_utc ASC"
@@ -130,8 +130,7 @@ impl Summarizer {
                 project_key: row.get(12)?,
                 session_id: row.get(13)?,
                 hash: row.get(14)?,
-                raw_ref: row.get(15)?,
-                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(16)?)
+                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(15)?)
                     .unwrap()
                     .with_timezone(&Utc),
             })
@@ -150,7 +149,7 @@ impl Summarizer {
         let conn = self.db.lock();
         let mut stmt = conn.prepare(
             "SELECT id, ts_utc, ts_local, source, event_type, actor, host, app, title, path,
-                    details_json, sensitivity, project_key, session_id, hash, raw_ref, created_at
+                    details_json, sensitivity, project_key, session_id, hash, created_at
              FROM events
              WHERE project_key = ?1 AND ts_utc >= ?2 AND ts_utc < ?3
              ORDER BY ts_utc ASC"
@@ -178,8 +177,7 @@ impl Summarizer {
                 project_key: row.get(12)?,
                 session_id: row.get(13)?,
                 hash: row.get(14)?,
-                raw_ref: row.get(15)?,
-                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(16)?)
+                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(15)?)
                     .unwrap()
                     .with_timezone(&Utc),
             })

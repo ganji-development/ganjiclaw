@@ -12,18 +12,6 @@ const SQLITE_OPEN_TIMEOUT_CAP_SECS: u64 = 300;
 
 /// Initialize the database schema.
 pub fn init_schema(conn: &Connection) -> Result<()> {
-    // Raw events table
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS raw_events (
-            id TEXT PRIMARY KEY,
-            source TEXT NOT NULL,
-            raw_payload TEXT NOT NULL,
-            ingested_at TEXT NOT NULL,
-            processed_at TEXT
-        )",
-        [],
-    )?;
-
     // Events table
     conn.execute(
         "CREATE TABLE IF NOT EXISTS events (
@@ -42,7 +30,6 @@ pub fn init_schema(conn: &Connection) -> Result<()> {
             project_key TEXT,
             session_id TEXT,
             hash TEXT,
-            raw_ref TEXT,
             created_at TEXT NOT NULL
         )",
         [],
@@ -248,7 +235,6 @@ pub struct Event {
     pub project_key: Option<String>,
     pub session_id: Option<String>,
     pub hash: Option<String>,
-    pub raw_ref: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -271,7 +257,6 @@ impl Event {
             project_key: None,
             session_id: None,
             hash: None,
-            raw_ref: None,
             created_at: now,
         }
     }

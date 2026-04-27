@@ -11,6 +11,7 @@ pub mod api;
 pub mod api_pairing;
 #[cfg(feature = "plugins-wasm")]
 pub mod api_plugins;
+pub mod api_skills;
 #[cfg(feature = "webauthn")]
 pub mod api_webauthn;
 pub mod auth_rate_limit;
@@ -940,6 +941,7 @@ pub async fn run_gateway(
     let cors = CorsLayer::new()
         .allow_origin([
             "tauri://localhost".parse().unwrap(),
+            "http://tauri.localhost".parse().unwrap(),
             "https://tauri.localhost".parse().unwrap(),
             "http://localhost:5173".parse().unwrap(),
             "http://127.0.0.1:5173".parse().unwrap(),
@@ -973,6 +975,25 @@ pub async fn run_gateway(
         .route("/api/channels", get(api::handle_api_channels))
         .route("/api/config", get(api::handle_api_config_get))
         .route("/api/tools", get(api::handle_api_tools))
+        // ── Skills management ──
+        .route("/api/skills", get(api_skills::handle_api_skills_list))
+        .route("/api/skills/install", post(api_skills::handle_api_skills_install))
+        .route(
+            "/api/skills/registry/search",
+            get(api_skills::handle_api_skills_search),
+        )
+        .route(
+            "/api/skills/{id}",
+            delete(api_skills::handle_api_skills_uninstall),
+        )
+        .route(
+            "/api/skills/{id}/enable",
+            post(api_skills::handle_api_skills_enable),
+        )
+        .route(
+            "/api/skills/{id}/disable",
+            post(api_skills::handle_api_skills_disable),
+        )
         .route("/api/cron", get(api::handle_api_cron_list))
         .route("/api/cron", post(api::handle_api_cron_add))
         .route(

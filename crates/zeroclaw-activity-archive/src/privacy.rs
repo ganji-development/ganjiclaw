@@ -87,8 +87,12 @@ impl PrivacyManager {
                 }
                 PrivacyRuleType::ExcludeDomain => {
                     if let Some(url) = event.details.get("url").and_then(|v| v.as_str()) {
-                        if self.matches_pattern(url, &rule.pattern) {
-                            return true;
+                        // Match against the host, not the full URL — otherwise
+                        // `*.bank.com` never matches `https://www.bank.com/login`.
+                        if let Some(host) = url::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_string)) {
+                            if self.matches_pattern(&host, &rule.pattern) {
+                                return true;
+                            }
                         }
                     }
                 }
@@ -278,20 +282,20 @@ impl PrivacyManager {
         Ok(())
     }
 
-    /// Check if a value matches a pattern.
+    /// Check if a value matches a pattern. Case-insensitive.
     fn matches_pattern(&self, value: &str, pattern: &str) -> bool {
-        // Support glob patterns
         if pattern.contains('*') || pattern.contains('?') {
             let regex_pattern = pattern
                 .replace('.', r"\.")
                 .replace('*', ".*")
                 .replace('?', ".");
-            if let Ok(re) = regex::Regex::new(&format!("^{}$", regex_pattern)) {
+            // (?i) — privacy patterns must match regardless of case;
+            // "*password*" needs to catch "Password" and "PASSWORD" too.
+            if let Ok(re) = regex::Regex::new(&format!("(?i)^{}$", regex_pattern)) {
                 return re.is_match(value);
             }
         }
 
-        // Case-insensitive exact match
         value.to_lowercase() == pattern.to_lowercase()
     }
 
@@ -303,5 +307,161 @@ impl PrivacyManager {
         let mut hasher = DefaultHasher::new();
         value.hash(&mut hasher);
         format!("{:x}", hasher.finish())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::schema::{init_schema, Event, EventType};
+    use rusqlite::Connection;
+
+    fn setup_manager() -> PrivacyManager {
+        let conn = Connection::open_in_memory().unwrap();
+        init_schema(&conn).unwrap();
+        PrivacyManager::new(Arc::new(Mutex::new(conn)))
+    }
+
+    #[test]
+    fn test_add_list_remove_rule() {
+        let pm = setup_manager();
+
+        pm.add_exclusion(
+            PrivacyRuleType::ExcludePath,
+            "**/test/**".to_string(),
+            PrivacyAction::Exclude,
+        )
+        .unwrap();
+
+        let rules = pm.list_rules().unwrap();
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].pattern, "**/test/**");
+
+        let id = rules[0].id.clone();
+        pm.remove_rule(&id).unwrap();
+        assert!(pm.list_rules().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_should_exclude_path() {
+        let pm = setup_manager();
+        pm.add_exclusion(
+            PrivacyRuleType::ExcludePath,
+            "**/passwords/**".to_string(),
+            PrivacyAction::Exclude,
+        )
+        .unwrap();
+
+        let mut event = Event::new("file_activity".to_string(), EventType::FileCreate);
+        event.path = Some("/home/user/passwords/secret.txt".to_string());
+        assert!(pm.should_exclude(&event));
+    }
+
+    #[test]
+    fn test_should_exclude_title() {
+        let pm = setup_manager();
+        pm.add_exclusion(
+            PrivacyRuleType::ExcludeTitle,
+            "*password*".to_string(),
+            PrivacyAction::Exclude,
+        )
+        .unwrap();
+
+        let mut event = Event::new("window_focus".to_string(), EventType::WindowFocus);
+        event.title = Some("Enter Password".to_string());
+        assert!(pm.should_exclude(&event));
+    }
+
+    #[test]
+    fn test_should_exclude_domain() {
+        let pm = setup_manager();
+        pm.add_exclusion(
+            PrivacyRuleType::ExcludeDomain,
+            "*.bank.com".to_string(),
+            PrivacyAction::Exclude,
+        )
+        .unwrap();
+
+        // Domain rules match the URL host, not the full URL — and they're
+        // case-insensitive. Both behaviors are part of the privacy contract.
+        let mut event = Event::new("browser_visit".to_string(), EventType::BrowserVisit);
+        event.details = serde_json::json!({ "url": "https://www.BANK.com/login" });
+        assert!(pm.should_exclude(&event));
+
+        // Same TLD, different domain — must NOT match.
+        let mut other = Event::new("browser_visit".to_string(), EventType::BrowserVisit);
+        other.details = serde_json::json!({ "url": "https://example.com/" });
+        assert!(!pm.should_exclude(&other));
+    }
+
+    #[test]
+    fn test_does_not_exclude_safe_events() {
+        let pm = setup_manager();
+        let mut event = Event::new("window_focus".to_string(), EventType::WindowFocus);
+        event.title = Some("Safe Document".to_string());
+        event.path = Some("/home/user/documents/work.txt".to_string());
+        assert!(!pm.should_exclude(&event));
+    }
+
+    #[test]
+    fn test_redact_replaces_title() {
+        let pm = setup_manager();
+        pm.add_exclusion(
+            PrivacyRuleType::Redaction,
+            "*secret*".to_string(),
+            PrivacyAction::Redact,
+        )
+        .unwrap();
+
+        let mut event = Event::new("window_focus".to_string(), EventType::WindowFocus);
+        event.title = Some("My Secret Document".to_string());
+        pm.redact(&mut event);
+        assert_eq!(event.title.as_deref(), Some("[REDACTED]"));
+    }
+
+    #[test]
+    fn test_hash_replaces_title_with_hex() {
+        let pm = setup_manager();
+        pm.add_exclusion(
+            PrivacyRuleType::Redaction,
+            "*token*".to_string(),
+            PrivacyAction::Hash,
+        )
+        .unwrap();
+
+        let mut event = Event::new("window_focus".to_string(), EventType::WindowFocus);
+        let original = "My Token Value".to_string();
+        event.title = Some(original.clone());
+        pm.redact(&mut event);
+
+        let hashed = event.title.unwrap();
+        assert_ne!(hashed, original);
+        assert!(hashed.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_default_rules_cover_common_secrets() {
+        let rules = PrivacyManager::default_rules();
+        assert!(!rules.is_empty());
+
+        // Spot-check the categories that matter for the privacy contract.
+        assert!(rules.iter().any(|r| r.rule_type == PrivacyRuleType::ExcludePath
+            && r.pattern.contains("passwords")));
+        assert!(rules.iter().any(|r| r.rule_type == PrivacyRuleType::ExcludeTitle
+            && r.pattern.contains("password")));
+        assert!(rules.iter().any(|r| r.rule_type == PrivacyRuleType::ExcludeDomain
+            && r.pattern.contains("bank")));
+    }
+
+    #[test]
+    fn test_initialize_default_rules_seeds_db() {
+        let pm = setup_manager();
+        pm.initialize_default_rules().unwrap();
+        let rules = pm.list_rules().unwrap();
+        assert_eq!(rules.len(), PrivacyManager::default_rules().len());
+
+        // Idempotent — running again does not duplicate rows.
+        pm.initialize_default_rules().unwrap();
+        assert_eq!(pm.list_rules().unwrap().len(), PrivacyManager::default_rules().len());
     }
 }

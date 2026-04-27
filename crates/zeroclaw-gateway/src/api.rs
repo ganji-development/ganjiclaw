@@ -254,9 +254,10 @@ pub async fn handle_api_config_put(
 
     // Save to disk
     if let Err(e) = new_config.save().await {
+        tracing::error!(error = ?e, "Failed to save config via PUT /api/config");
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": format!("Failed to save config: {e}")})),
+            Json(serde_json::json!({"error": format!("Failed to save config: {e:#}")})),
         )
             .into_response();
     }
@@ -580,9 +581,10 @@ pub async fn handle_api_cron_settings_patch(
     }
 
     if let Err(e) = config.save().await {
+        tracing::error!(error = ?e, "Failed to save config via PATCH /api/cron/settings");
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": format!("Failed to save config: {e}")})),
+            Json(serde_json::json!({"error": format!("Failed to save config: {e:#}")})),
         )
             .into_response();
     }

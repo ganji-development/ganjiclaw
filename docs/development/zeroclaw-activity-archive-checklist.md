@@ -2,14 +2,14 @@
 
 Tracking doc for the remaining work on `zeroclaw-activity-archive`. Ordered by dependency, grouped into phases. Intended to be worked top-down — later phases assume earlier ones are done.
 
-## Current state (2026-04-23)
+## Current state (2026-04-25)
 
 - ✅ **Daemon integration done.** Activity-archive is a supervised component of `ZeroClawDaemon`, spawned when `config.activity_archive.enabled` on Windows. Start logic lives in [crates/zeroclaw-runtime/src/daemon/activity_archive.rs](../../crates/zeroclaw-runtime/src/daemon/activity_archive.rs). No separate service, no child process, no SCM wrapper.
-- ✅ **Storage schema** — 10 tables defined in [crates/zeroclaw-activity-archive/src/schema.rs](../../crates/zeroclaw-activity-archive/src/schema.rs): `raw_events`, `events`, `sessions`, `entities`, `event_entity_map`, `summaries`, `artifacts`, `notion_sync_queue`, `ingestion_offsets`, `privacy_rules`.
-- ✅ **Test compile unblocked.** `cargo test -p zeroclaw-activity-archive` passes (21/21); `cargo test -p zeroclaw-config --lib` now compiles (536/558 pass, 22 pre-existing Windows-unfriendly Unix-path asserts).
-- ⚠️ **Collectors: 4 of 5 are empty stubs.** Only `window_focus` actually emits events, and its process-name field is a literal `"process_<pid>"` placeholder.
+- ✅ **Storage schema** — 9 tables in [crates/zeroclaw-activity-archive/src/schema.rs](../../crates/zeroclaw-activity-archive/src/schema.rs): `events`, `sessions`, `entities`, `event_entity_map`, `summaries`, `artifacts`, `notion_sync_queue`, `ingestion_offsets`, `privacy_rules`. (`raw_events` removed: collectors emit `RawEvent` in-memory; persisting them pre-normalization would defeat the privacy filter.)
+- ✅ **Tests green.** `cargo test -p zeroclaw-activity-archive` passes 69 tests across lib (40), integration_tests (11), and schema_tests (18). All `*.rs.pending_migration` files removed: substantive private-API tests migrated inline into `src/privacy.rs` and `src/notion_sync.rs`; `integration_tests.rs` rewritten against the public runtime API only; the rest were duplicates of existing inline coverage.
+- ✅ **Privacy filter bugs fixed.** `matches_pattern` is now case-insensitive (`*password*` catches `Password`/`PASSWORD`); `ExcludeDomain` rules match the URL host instead of the full URL (so `*.bank.com` actually catches `https://www.bank.com/login`). Same fixes in `Normalizer` and `PrivacyManager`. `FileActivityCollector::is_excluded` now normalizes Windows backslash paths so `**/.ssh/**` matches `C:\Users\.ssh\id_rsa`.
+- ⚠️ **Collectors: 4 of 5 are empty stubs.** Only `window_focus` actually emits events.
 - ⚠️ **Notion sync: scaffolding exists, three actual API calls are TODO** at [notion_sync.rs:190, 197, 204](../../crates/zeroclaw-activity-archive/src/notion_sync.rs).
-- ⚠️ **Integration tests shelved.** 7 of 8 files in [tests/](../../crates/zeroclaw-activity-archive/tests/) access private APIs — structurally mislocated unit tests. Renamed to `*.rs.pending_migration` so cargo ignores them; content preserved for proper inline migration later.
 
 ---
 
@@ -23,11 +23,9 @@ Until tests compile, every later phase is unverifiable.
 
 ### Phase 0 follow-up: migrate the shelved integration tests inline
 
-Not blocking Phase 1. When we're ready:
-
-- [ ] Move each `tests/<name>_tests.rs.pending_migration` file's content into a `#[cfg(test)] mod tests { ... }` block at the bottom of the corresponding `src/<name>.rs`.
-- [ ] Fix the API-drift issues surfaced during the compile attempt: missing `Default` impls on the `*Config` types in `zeroclaw-activity-archive::runtime`, the `PathBuf`-doesn't-implement-`Display` error in `collector_tests`, and `Normalizer::redact` which doesn't exist.
-- [ ] Delete the `.pending_migration` files once content is migrated.
+- [x] Substantive private-API tests for `PrivacyManager` and `NotionSync` migrated inline as `#[cfg(test)] mod tests` blocks. Trivial creation tests dropped (already covered by inline tests on each module). Removed-API tests dropped (`Normalizer::redact` was a duplicate of `PrivacyManager::redact`).
+- [x] `*Config::default()` impls added to `zeroclaw-activity-archive::runtime` so `tests/integration_tests.rs` can construct configs cleanly.
+- [x] `tests/integration_tests.rs` rewritten as a proper integration test against the public runtime API (11 tests). All `.pending_migration` files deleted.
 
 ## Phase 1 — Make `window_focus` production-grade
 
@@ -40,7 +38,7 @@ One real data source we can trust makes Phase 4 tools immediately demoable.
 
 ### Phase 1 follow-up
 
-- [ ] **Make `IDLE_THRESHOLD_SECONDS` configurable.** Add `idle_threshold_seconds: u64` to `CollectorConfig` in [zeroclaw-config/src/schema.rs](../../crates/zeroclaw-config/src/schema.rs), pass through the runtime config translation in [daemon/activity_archive.rs](../../crates/zeroclaw-runtime/src/daemon/activity_archive.rs), thread to `WindowFocusCollector::new`.
+- [x] **Make `IDLE_THRESHOLD_SECONDS` configurable.** `idle_threshold_seconds: u64` lives on `CollectorConfig` in [schema.rs:3054](../../crates/zeroclaw-config/src/schema.rs#L3054), threaded through [runtime.rs:131](../../crates/zeroclaw-activity-archive/src/runtime.rs#L131) and [daemon/activity_archive.rs:57](../../crates/zeroclaw-runtime/src/daemon/activity_archive.rs#L57) into `WindowFocusCollector::new`.
 - [ ] **Mock-backed test for the event stream.** Feed synthetic `get_foreground_window_info` / `get_idle_seconds` into the stream loop and assert the sequence of emitted `RawEvent`s (window-change, idle transitions).
 
 ## Phase 2 — Implement the stub collectors (ascending difficulty)

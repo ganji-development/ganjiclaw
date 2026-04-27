@@ -7,7 +7,7 @@ const gatewayPort = parseInt(process.env['ZEROCLAW_GATEWAY_PORT'] ?? '0') || 426
 const gatewayTarget = `http://127.0.0.1:${gatewayPort}`;
 
 export default defineConfig(({ command }) => {
-  const isTauriBuild = !!process.env['TAURI_ENV'];
+  const isTauriBuild = !!process.env['TAURI_ENV_PLATFORM'];
   return {
     base: command === "serve" || isTauriBuild ? "/" : "/_app/",
     plugins: [react(), tailwindcss()],
@@ -17,7 +17,7 @@ export default defineConfig(({ command }) => {
       },
     },
     build: {
-      outDir: "dist",
+      outDir: isTauriBuild ? "dist-tauri" : "dist",
     },
     server: {
       proxy: {

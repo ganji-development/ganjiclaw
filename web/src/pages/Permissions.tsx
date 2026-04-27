@@ -42,20 +42,28 @@ export default function Permissions() {
   const [loading, setLoading] = useState(true);
   const [requesting, setRequesting] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
+  const refreshCore = useCallback(async () => {
     if (!isTauri()) return;
-    setLoading(true);
     try {
       const perms = await getPermissionsStatus();
       setPermissions(perms);
     } catch {
       // May fail if not in Tauri context.
-    } finally {
-      setLoading(false);
     }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    await refreshCore();
+    setLoading(false);
+  }, [refreshCore]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void refreshCore().finally(() => setLoading(false));
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [refreshCore]);
 
   const handleRequest = async (name: string) => {
     setRequesting(name);

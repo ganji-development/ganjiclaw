@@ -106,6 +106,42 @@ export interface CliTool {
   category: string;
 }
 
+export interface InstalledSkill {
+  /** Stable directory id (basename). Used for enable/disable/uninstall. */
+  id: string | null;
+  /** Display name from SKILL manifest. */
+  name: string;
+  description: string;
+  version: string;
+  author: string | null;
+  tags: string[];
+  tool_count: number;
+  prompt_count: number;
+  /** Absolute path to the SKILL.md / SKILL.toml on disk. */
+  location: string | null;
+  /** False when the skill is in `config.skills.disabled_skills`. */
+  enabled: boolean;
+}
+
+export interface ClawhubSearchResult {
+  score: number;
+  slug?: string;
+  displayName?: string;
+  summary?: string | null;
+  version?: string | null;
+  updatedAt?: number;
+}
+
+export interface ClawhubSearchResponse {
+  results: ClawhubSearchResult[];
+}
+
+export interface SkillInstallResponse {
+  status: string;
+  installed_path: string;
+  files_scanned: number;
+}
+
 export interface Session {
   session_id: string;
   created_at: string;
@@ -171,7 +207,7 @@ export interface NodeSummary {
 export interface NodeCapabilityInfo {
   name: string;
   description: string;
-  parameters: any;
+  parameters: Record<string, unknown>;
 }
 
 export interface DeviceInfo {

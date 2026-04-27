@@ -21,7 +21,6 @@ fn test_init_schema() {
         .collect::<Result<_, _>>()
         .unwrap();
 
-    assert!(tables.contains(&"raw_events".to_string()));
     assert!(tables.contains(&"events".to_string()));
     assert!(tables.contains(&"sessions".to_string()));
     assert!(tables.contains(&"entities".to_string()));

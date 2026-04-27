@@ -34,13 +34,15 @@ impl FileActivityCollector {
     }
 
     fn is_excluded(path: &std::path::Path, patterns: &[String]) -> bool {
-        let path_str = path.to_string_lossy();
+        // Glob patterns use `/` separators; normalize Windows backslash paths
+        // before matching so `**/.ssh/**` catches `C:\Users\.ssh\id_rsa`.
+        let path_str = path.to_string_lossy().replace('\\', "/");
         for pattern in patterns {
             if pattern.contains('*') {
                 let regex_pattern = pattern
                     .replace('.', r"\.")
                     .replace("**", "§§")
-                    .replace('*', "[^/\\\\]*")
+                    .replace('*', "[^/]*")
                     .replace("§§", ".*")
                     .replace('?', ".");
                 if let Ok(re) = regex::Regex::new(&format!("(?i){}", regex_pattern)) {

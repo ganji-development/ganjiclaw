@@ -291,15 +291,8 @@ pub fn uninstall_system() -> Result<()> {
         && status.current_state != ServiceState::Stopped
     {
         let _ = service.stop();
-        // Wait briefly for stop to take effect
-        for _ in 0..30 {
-            std::thread::sleep(Duration::from_millis(500));
-            if let Ok(s) = service.query_status()
-                && s.current_state == ServiceState::Stopped
-            {
-                break;
-            }
-        }
+        // Wait for stop to take effect
+        let _ = wait_for_state(&service, ServiceState::Stopped, Duration::from_secs(30));
     }
 
     service.delete().context("Failed to delete service")?;
@@ -321,9 +314,26 @@ fn clear_stored_config_dir() -> Result<()> {
 pub fn start_system() -> Result<()> {
     let manager = open_manager(ServiceManagerAccess::CONNECT)?;
     let service = open_service(&manager, ServiceAccess::START | ServiceAccess::QUERY_STATUS)?;
-    service
-        .start::<&str>(&[])
-        .context("Failed to start service")?;
+
+    let status = service
+        .query_status()
+        .context("Failed to query service status")?;
+    match status.current_state {
+        ServiceState::Running => {
+            println!("✅ Service already running: {SERVICE_NAME}");
+            return Ok(());
+        }
+        ServiceState::StartPending => {
+            // Already starting, just wait
+        }
+        _ => {
+            service
+                .start::<&str>(&[])
+                .context("Failed to start service")?;
+        }
+    }
+
+    wait_for_state(&service, ServiceState::Running, Duration::from_secs(30))?;
     println!("✅ Service started: {SERVICE_NAME}");
     Ok(())
 }
@@ -331,7 +341,24 @@ pub fn start_system() -> Result<()> {
 pub fn stop_system() -> Result<()> {
     let manager = open_manager(ServiceManagerAccess::CONNECT)?;
     let service = open_service(&manager, ServiceAccess::STOP | ServiceAccess::QUERY_STATUS)?;
-    service.stop().context("Failed to stop service")?;
+
+    let status = service
+        .query_status()
+        .context("Failed to query service status")?;
+    match status.current_state {
+        ServiceState::Stopped => {
+            println!("✅ Service already stopped: {SERVICE_NAME}");
+            return Ok(());
+        }
+        ServiceState::StopPending => {
+            // Already stopping, just wait
+        }
+        _ => {
+            service.stop().context("Failed to stop service")?;
+        }
+    }
+
+    wait_for_state(&service, ServiceState::Stopped, Duration::from_secs(30))?;
     println!("✅ Service stopped: {SERVICE_NAME}");
     Ok(())
 }
@@ -379,6 +406,27 @@ pub fn update_config_dir(config_dir: &PathBuf) -> Result<()> {
     println!("   Restart the service for changes to take effect:");
     println!("   zeroclaw service restart --scope system");
     Ok(())
+}
+
+fn wait_for_state(
+    service: &windows_service::service::Service,
+    target: ServiceState,
+    timeout: Duration,
+) -> Result<()> {
+    let start = std::time::Instant::now();
+    while start.elapsed() < timeout {
+        if let Ok(status) = service.query_status() {
+            if status.current_state == target {
+                return Ok(());
+            }
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    bail!(
+        "Timeout waiting for service to reach state {:?} after {:?}",
+        target,
+        timeout
+    );
 }
 
 fn open_manager(access: ServiceManagerAccess) -> Result<ServiceManager> {

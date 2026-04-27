@@ -456,26 +456,38 @@ export default function Nodes() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    Promise.all([
-      getNodes().catch(() => [] as NodeSummary[]),
-      getDevices().catch(() => [] as DeviceInfo[]),
-    ])
-      .then(([n, d]) => {
-        setNodes(n);
-        setDevices(d);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+  const refreshCore = useCallback(async () => {
+    try {
+      const [n, d] = await Promise.all([
+        getNodes().catch(() => [] as NodeSummary[]),
+        getDevices().catch(() => [] as DeviceInfo[]),
+      ]);
+      setError(null);
+      setNodes(n);
+      setDevices(d);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }, []);
 
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    await refreshCore();
+    setLoading(false);
+  }, [refreshCore]);
+
   useEffect(() => {
-    refresh();
-    const interval = setInterval(refresh, 10000);
-    return () => clearInterval(interval);
-  }, [refresh]);
+    const timer = setTimeout(() => {
+      void refreshCore().finally(() => setLoading(false));
+    }, 0);
+    const interval = setInterval(() => {
+      void refreshCore();
+    }, 10000);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
+  }, [refreshCore]);
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
